@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSMindMap</title>
+<style>
+:root {
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --surface2: #f8fafc;
+  --border: #e2e8f0;
+  --text: #1a202c;
+  --text2: #718096;
+  --accent: #4299e1;
+  --accent-hover: #3182ce;
+  --danger: #e53e3e;
+  --danger-hover: #c53030;
+  --success: #38a169;
+  --shadow: 0 2px 8px rgba(0,0,0,0.1);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.15);
+  --radius: 8px;
+  --sidebar-width: 280px;
+  --header-height: 52px;
+}
+[data-theme="dark"] {
+  --bg: #1a202c;
+  --surface: #2d3748;
+  --surface2: #4a5568;
+  --border: #4a5568;
+  --text: #f7fafc;
+  --text2: #a0aec0;
+  --shadow: 0 2px 8px rgba(0,0,0,0.4);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.5);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; transition: background 0.2s, color 0.2s; }
+#app { display: flex; flex-direction: column; height: 100%; }
+
+/* Header */
+#header {
+  height: var(--header-height);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+  flex-shrink: 0;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 12px;
+  white-space: nowrap;
+}
+.logo-icon { font-size: 22px; }
+.toolbar-sep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
+.toolbar-group { display: flex; align-items: center; gap: 4px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface2); border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.danger:hover { background: var(--danger); color: white; }
+.btn.icon { padding: 5px 8px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+#header .spacer { flex: 1; }
+
+/* Main layout */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+#sidebar {
+  width: var(--sidebar-width);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s, transform 0.2s;
+  flex-shrink: 0;
+}
+#sidebar.collapsed { width: 0; }
+.panel {
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text2);
+  margin-bottom: 12px;
+}
+.sidebar-scroll { flex: 1; overflow-y: auto; }
+.form-group { margin-bottom: 10px; }
+label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+input[type="text"], input[type="password"], textarea, select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="text"]:focus, input[type="password"]:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 70px; font-family: inherit; }
+.color-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.color-swatch {
+  width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.color-swatch:hover { transform: scale(1.2); }
+.color-swatch.active { border-color: var(--text); transform: scale(1.15); }
+.action-btns { display: flex; flex-direction: column; gap: 6px; }
+.action-btns .btn { justify-content: center; }
+
+/* AI panel */
+.ai-ideas { margin-top: 8px; }
+.ai-idea-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ai-idea-item:hover { background: var(--surface2); border-color: var(--accent); }
+.ai-idea-item .add-icon { color: var(--success); font-size: 16px; flex-shrink: 0; }
+.ai-status { font-size: 12px; color: var(--text2); text-align: center; padding: 12px; }
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.7s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.api-key-row { display: flex; gap: 6px; }
+.api-key-row input { flex: 1; }
+
+/* Canvas */
+#canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+#canvas { width: 100%; height: 100%; display: block; cursor: default; }
+#canvas.panning { cursor: grabbing; }
+
+/* Inline edit input */
+#inline-edit-input {
+  position: absolute;
+  display: none;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  padding: 4px 8px;
+  z-index: 100;
+  box-shadow: 0 0 0 3px rgba(66,153,225,0.3);
+}
+
+/* Context menu */
+#ctx-menu {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px 0;
+  z-index: 200;
+  display: none;
+  min-width: 160px;
+}
+.ctx-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.ctx-item:hover { background: var(--surface2); }
+.ctx-item.danger { color: var(--danger); }
+.ctx-item.danger:hover { background: var(--danger); color: white; }
+.ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* Toast */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: slideIn 0.2s ease;
+  max-width: 300px;
+}
+.toast.success { border-left: 3px solid var(--success); }
+.toast.error { border-left: 3px solid var(--danger); }
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Minimap */
+#minimap {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 160px;
+  height: 100px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  opacity: 0.85;
+}
+#minimap svg { width: 100%; height: 100%; }
+
+/* Zoom controls */
+#zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#zoom-controls .btn { padding: 6px; font-size: 16px; width: 34px; height: 34px; justify-content: center; }
+#zoom-level {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text2);
+  padding: 2px;
+}
+
+/* Empty state */
+#empty-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text2);
+  pointer-events: none;
+}
+#empty-hint .hint-icon { font-size: 48px; margin-bottom: 12px; }
+#empty-hint p { font-size: 14px; line-height: 1.6; }
+
+/* Keyboard shortcut hints */
+#kb-hints {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 11px;
+  color: var(--text2);
+  text-align: right;
+  line-height: 1.8;
+  pointer-events: none;
+}
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 10px;
+  background: var(--surface);
+}
+
+/* Node SVG styles (set via JS) */
+.node-group { cursor: grab; }
+.node-group.dragging { cursor: grabbing; }
+
+/* Relation mode */
+body.relation-mode #canvas { cursor: crosshair; }
+body.relation-mode .node-group { cursor: crosshair; }
+#btn-relation-mode.active { background: #805AD5; color: white; border-color: #805AD5; }
+#relation-hint {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  background: #805AD5; color: white; padding: 6px 16px; border-radius: 20px;
+  font-size: 13px; font-weight: 600; pointer-events: none; display: none;
+  box-shadow: var(--shadow);
+}
+body.relation-mode #relation-hint { display: block; }
+
+/* Relation line selected */
+.relation-line { cursor: pointer; }
+.relation-line:hover { opacity: 1 !important; }
+
+/* Cloud group label */
+.cloud-label { pointer-events: none; user-select: none; }
+
+/* AI step UI */
+.ai-step-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 700; color: var(--text2);
+  margin-bottom: 8px;
+}
+.ai-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); color: white; font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+/* Modal */
+#modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 300;
+  display: none; align-items: center; justify-content: center;
+}
+#modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border-radius: 12px; padding: 24px;
+  box-shadow: var(--shadow-lg); max-width: 480px; width: 90%;
+}
+.modal h2 { font-size: 18px; margin-bottom: 12px; }
+.modal p { font-size: 14px; color: var(--text2); margin-bottom: 16px; line-height: 1.5; }
+.modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <header id="header">
+    <div class="logo">
+      <span class="logo-icon">🕸</span>
+      <span>SSMindMap</span>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <button class="btn" onclick="newMap()" title="新規マップ (Ctrl+N)">📄 新規</button>
+      <button class="btn" onclick="openFile()" title="ファイルを開く (Ctrl+O)">📂 開く</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <button class="btn" onclick="saveJSON()" title="JSONで保存 (Ctrl+S)">💾 JSON</button>
+      <button class="btn" onclick="saveYAML()" title="YAMLで保存">💾 YAML</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <button class="btn icon" onclick="fitView()" title="全体表示 (F)">⊞</button>
+      <button class="btn icon" onclick="zoomIn()" title="拡大 (+)">＋</button>
+      <button class="btn icon" onclick="zoomOut()" title="縮小 (−)">−</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <button class="btn" id="btn-relation-mode" onclick="toggleRelationMode()" title="ノード間に関連線を引く">🔗 関連線</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="toolbar-group">
+      <button class="btn icon" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="サイドバー">☰</button>
+      <button class="btn icon" id="theme-btn" onclick="toggleTheme()" title="テーマ切替">🌙</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-scroll">
+        <!-- Node Properties -->
+        <div class="panel" id="node-panel">
+          <div class="panel-title">ノードプロパティ</div>
+          <div id="node-panel-content">
+            <div style="text-align:center;color:var(--text2);font-size:13px;padding:12px 0">
+              ノードを選択してください
+            </div>
+          </div>
+        </div>
+
+        <!-- Node Actions -->
+        <div class="panel" id="actions-panel">
+          <div class="panel-title">操作</div>
+          <div class="action-btns">
+            <button class="btn" onclick="addChild()" id="btn-add-child">➕ 子ノード追加 <kbd>Tab</kbd></button>
+            <button class="btn" onclick="addSibling()" id="btn-add-sibling">↕ 兄弟ノード追加 <kbd>Enter</kbd></button>
+            <button class="btn" onclick="toggleCloudGroup()" id="btn-cloud">☁ 雲で囲む</button>
+            <button class="btn danger" onclick="deleteSelected()" id="btn-delete">🗑 ノード削除 <kbd>Del</kbd></button>
+          </div>
+        </div>
+
+        <!-- AI Panel -->
+        <div class="panel" id="ai-panel">
+          <div class="panel-title">✨ AI アイデア提案</div>
+          <div class="ai-step">
+            <div class="ai-step-header">
+              <span class="ai-step-num">1</span>プロンプトを生成
+            </div>
+            <div class="form-group">
+              <label>言語 / 件数</label>
+              <div style="display:flex;gap:6px">
+                <select id="ai-lang" style="flex:1">
+                  <option value="ja">日本語</option>
+                  <option value="en">English</option>
+                </select>
+                <select id="ai-count" style="width:64px">
+                  <option value="5">5件</option>
+                  <option value="8" selected>8件</option>
+                  <option value="12">12件</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn primary" onclick="generatePrompt()" style="width:100%;justify-content:center">
+              📝 プロンプト生成
+            </button>
+            <div id="ai-prompt-area" style="display:none;margin-top:8px">
+              <textarea id="ai-prompt-text" readonly rows="5" style="font-size:11px;line-height:1.5;resize:vertical"></textarea>
+              <button class="btn" onclick="copyPrompt()" style="width:100%;justify-content:center;margin-top:4px">📋 コピー</button>
+            </div>
+          </div>
+
+          <div class="ai-step" style="margin-top:12px">
+            <div class="ai-step-header">
+              <span class="ai-step-num">2</span>AIの回答を貼り付け
+            </div>
+            <textarea id="ai-response-text" rows="5" placeholder="ChatGPT / Claude / Gemini 等の回答をここに貼り付け..." style="font-size:12px;line-height:1.5;resize:vertical"></textarea>
+            <button class="btn" onclick="parseAiResponse()" style="width:100%;justify-content:center;margin-top:4px">
+              🔍 解析して提案を表示
+            </button>
+          </div>
+
+          <div id="ai-output" class="ai-ideas" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Canvas -->
+    <div id="canvas-container">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="node-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+          </filter>
+          <filter id="node-selected" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#4299e1" flood-opacity="0.5"/>
+          </filter>
+        </defs>
+        <g id="canvas-group">
+          <g id="edges-layer"></g>
+          <g id="nodes-layer"></g>
+        </g>
+      </svg>
+
+      <!-- Relation mode hint -->
+      <div id="relation-hint">🔗 接続元を選択 → 接続先をクリック &nbsp;[Esc でキャンセル]</div>
+
+      <!-- Inline edit -->
+      <input type="text" id="inline-edit-input" onkeydown="onInlineEditKey(event)" onblur="commitInlineEdit()">
+
+      <!-- Empty hint -->
+      <div id="empty-hint">
+        <div class="hint-icon">🕸</div>
+        <p>ダブルクリックでノードを編集<br>Tabキーで子ノードを追加<br>右クリックでメニューを表示</p>
+      </div>
+
+      <!-- KB hints -->
+      <div id="kb-hints">
+        <kbd>←</kbd> 親へ &nbsp;<kbd>→</kbd> 子へ &nbsp;<kbd>↑↓</kbd> 兄弟間<br>
+        <kbd>Tab</kbd> 子追加 &nbsp;<kbd>Enter</kbd> 兄弟追加 &nbsp;<kbd>Del</kbd> 削除<br>
+        <kbd>F2</kbd> 編集 &nbsp;<kbd>F</kbd> 全体表示 &nbsp;<kbd>Ctrl+Z</kbd> 元に戻す
+      </div>
+
+      <!-- Zoom controls -->
+      <div id="zoom-controls">
+        <button class="btn icon" onclick="zoomIn()">＋</button>
+        <div id="zoom-level">100%</div>
+        <button class="btn icon" onclick="zoomOut()">−</button>
+        <button class="btn icon" onclick="fitView()" title="全体表示">⊞</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="ctxAddChild()">➕ 子ノード追加</div>
+  <div class="ctx-item" onclick="ctxAddSibling()">↕ 兄弟ノード追加</div>
+  <div class="ctx-item" onclick="ctxEdit()">✏ 編集</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxToggleExpand()">🔀 展開/折りたたみ</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="ctxDelete()">🗑 削除</div>
+</div>
+
+<!-- Modal -->
+<div id="modal-overlay">
+  <div class="modal">
+    <h2 id="modal-title"></h2>
+    <p id="modal-body"></p>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeModal()">キャンセル</button>
+      <button class="btn danger" id="modal-confirm-btn" onclick="confirmModal()">削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<!-- File input -->
+<input type="file" id="file-input" accept=".json,.yaml,.yml" style="display:none" onchange="onFileSelected(event)">
+
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+<script>
+// ============================================================
+// Constants
+// ============================================================
+const BRANCH_COLORS = [
+  '#E53E3E','#DD6B20','#D69E2E','#38A169',
+  '#3182CE','#805AD5','#D53F8C','#319795',
+  '#2B6CB0','#744210'
+];
+
+const DEFAULT_MAP = {
+  title: 'マイマインドマップ',
+  relations: [],
+  root: {
+    id: 'root',
+    text: 'SSMindMap',
+    x: 0, y: 0,
+    expanded: true,
+    color: null,
+    children: [
+      {
+        id: 'n1', text: 'アイデア A', x: 0, y: 0, expanded: true, color: null,
+        children: [
+          { id: 'n1a', text: 'サブアイデア 1', x: 0, y: 0, expanded: true, color: null, children: [] },
+          { id: 'n1b', text: 'サブアイデア 2', x: 0, y: 0, expanded: true, color: null, children: [] }
+        ]
+      },
+      {
+        id: 'n2', text: 'アイデア B', x: 0, y: 0, expanded: true, color: null,
+        children: [
+          { id: 'n2a', text: 'サブアイデア 3', x: 0, y: 0, expanded: true, color: null, children: [] }
+        ]
+      },
+      { id: 'n3', text: 'アイデア C', x: 0, y: 0, expanded: true, color: null, children: [] },
+      { id: 'n4', text: 'アイデア D', x: 0, y: 0, expanded: true, color: null, children: [] }
+    ]
+  }
+};
+
+// ============================================================
+// State
+// ============================================================
+let mindmap = JSON.parse(JSON.stringify(DEFAULT_MAP));
+let selectedId = null;
+let selectedRelationId = null;
+let ctxTargetId = null;
+let modalConfirmCb = null;
+
+// Relation mode
+let relationMode = false;
+let relationSource = null; // nodeId of first click
+
+// Canvas transform
+let tx = 0, ty = 0, scale = 1;
+
+// Drag
+let dragState = null; // { nodeId, startX, startY, origX, origY, moved }
+// Pan
+let panState = null; // { startX, startY, origTx, origTy }
+
+// Undo stack
+let undoStack = [];
+const MAX_UNDO = 50;
+
+// ============================================================
+// Utilities
+// ============================================================
+function uuid() {
+  return 'n' + Math.random().toString(36).substr(2, 9);
+}
+
+function deepClone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function findNode(id, node) {
+  if (!node) node = mindmap.root;
+  if (node.id === id) return node;
+  for (const c of (node.children || [])) {
+    const f = findNode(id, c);
+    if (f) return f;
+  }
+  return null;
+}
+
+function findParent(id, node, parent) {
+  if (!node) node = mindmap.root;
+  if (node.id === id) return parent || null;
+  for (const c of (node.children || [])) {
+    const f = findParent(id, c, node);
+    if (f !== undefined) return f;
+  }
+  return undefined;
+}
+
+function getNodeIndex(nodeId, parent) {
+  return parent.children.findIndex(c => c.id === nodeId);
+}
+
+function pushUndo() {
+  undoStack.push(deepClone(mindmap));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+}
+
+function undo() {
+  if (undoStack.length === 0) { showToast('元に戻す履歴がありません', 'error'); return; }
+  mindmap = undoStack.pop();
+  selectedId = null;
+  render();
+  updateSidebar();
+  showToast('元に戻しました');
+}
+
+// ============================================================
+// Layout
+// ============================================================
+function layoutTree(node, cx, cy, startAngle, endAngle, depth) {
+  node.x = cx;
+  node.y = cy;
+
+  if (!node.expanded || !node.children || node.children.length === 0) return;
+
+  const n = node.children.length;
+  const radius = depth === 0 ? 210 : Math.max(140, 160 - depth * 10);
+
+  const rangeStart = depth === 0 ? 0 : startAngle;
+  const rangeEnd = depth === 0 ? Math.PI * 2 : endAngle;
+
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    const angle = rangeStart + (rangeEnd - rangeStart) * t;
+    const childX = cx + Math.cos(angle) * radius;
+    const childY = cy + Math.sin(angle) * radius;
+
+    const sectorW = (rangeEnd - rangeStart) / n;
+    layoutTree(node.children[i], childX, childY, angle - sectorW / 2, angle + sectorW / 2, depth + 1);
+  }
+}
+
+// ============================================================
+// Node geometry
+// ============================================================
+const _measureCanvas = document.createElement('canvas').getContext('2d');
+
+function getNodeDim(text, isRoot) {
+  _measureCanvas.font = `${isRoot ? 700 : 500} ${isRoot ? 15 : 13}px 'Segoe UI', system-ui, sans-serif`;
+  const tw = _measureCanvas.measureText(text).width;
+  const w = Math.max(isRoot ? 100 : 70, tw + (isRoot ? 40 : 28));
+  const h = isRoot ? 44 : 34;
+  return { w, h };
+}
+
+function getBranchColor(node, depth, inheritedColor) {
+  if (node.color) return node.color;
+  if (depth === 0) return '#667EEA';
+  if (depth === 1) {
+    const idx = mindmap.root.children.indexOf(node);
+    return BRANCH_COLORS[((idx % BRANCH_COLORS.length) + BRANCH_COLORS.length) % BRANCH_COLORS.length];
+  }
+  return inheritedColor;
+}
+
+// ============================================================
+// Render
+// ============================================================
+function render() {
+  layoutTree(mindmap.root, 0, 0, 0, Math.PI * 2, 0);
+
+  const edgesLayer = document.getElementById('edges-layer');
+  const nodesLayer = document.getElementById('nodes-layer');
+  edgesLayer.innerHTML = '';
+  nodesLayer.innerHTML = '';
+
+  // Cloud groups (rendered first = behind nodes)
+  renderCloudGroups(edgesLayer);
+
+  renderSubtree(mindmap.root, null, 0, '#667EEA');
+
+  // Relation lines (rendered last = above nodes)
+  renderRelations(nodesLayer);
+
+  updateZoomLevel();
+  updateEmptyHint();
+  updateCanvasGroupTransform();
+}
+
+function renderSubtree(node, parent, depth, inheritedColor) {
+  const color = getBranchColor(node, depth, inheritedColor);
+
+  if (parent) renderEdge(parent, node, color);
+  renderNode(node, depth, color);
+
+  if (node.expanded && node.children) {
+    for (const child of node.children) {
+      renderSubtree(child, node, depth + 1, color);
+    }
+  }
+}
+
+function renderNode(node, depth, color) {
+  const isRoot = depth === 0;
+  const isSelected = node.id === selectedId;
+  const dim = getNodeDim(node.text, isRoot);
+  const theme = document.documentElement.getAttribute('data-theme');
+  const isDark = theme === 'dark';
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('data-id', node.id);
+  g.setAttribute('class', 'node-group');
+  g.setAttribute('transform', `translate(${node.x - dim.w / 2},${node.y - dim.h / 2})`);
+
+  // Background rect
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('width', dim.w);
+  rect.setAttribute('height', dim.h);
+  rect.setAttribute('rx', isRoot ? 22 : 12);
+  rect.setAttribute('ry', isRoot ? 22 : 12);
+
+  if (isRoot) {
+    rect.setAttribute('fill', color);
+    rect.setAttribute('stroke', 'none');
+  } else {
+    const alpha = isDark ? '33' : '18';
+    rect.setAttribute('fill', color + alpha);
+    rect.setAttribute('stroke', color);
+    rect.setAttribute('stroke-width', '1.5');
+  }
+
+  if (isSelected) {
+    rect.setAttribute('filter', 'url(#node-selected)');
+    rect.setAttribute('stroke', '#4299e1');
+    rect.setAttribute('stroke-width', '2.5');
+  } else {
+    rect.setAttribute('filter', 'url(#node-shadow)');
+  }
+
+  // Text
+  const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  text.setAttribute('x', dim.w / 2);
+  text.setAttribute('y', dim.h / 2);
+  text.setAttribute('text-anchor', 'middle');
+  text.setAttribute('dominant-baseline', 'middle');
+  text.setAttribute('font-size', isRoot ? '15' : '13');
+  text.setAttribute('font-weight', isRoot ? '700' : '500');
+  text.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
+  text.setAttribute('pointer-events', 'none');
+  text.setAttribute('fill', isRoot ? 'white' : (isDark ? '#f7fafc' : color));
+  text.setAttribute('user-select', 'none');
+  text.textContent = node.text;
+
+  g.appendChild(rect);
+  g.appendChild(text);
+
+  // Collapse/expand button
+  if (node.children && node.children.length > 0) {
+    const btnR = 9;
+    const bx = dim.w + 4;
+    const by = dim.h / 2;
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', bx);
+    circle.setAttribute('cy', by);
+    circle.setAttribute('r', btnR);
+    circle.setAttribute('fill', color);
+    circle.setAttribute('cursor', 'pointer');
+    circle.setAttribute('class', 'expand-btn');
+
+    const btnText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    btnText.setAttribute('x', bx);
+    btnText.setAttribute('y', by);
+    btnText.setAttribute('text-anchor', 'middle');
+    btnText.setAttribute('dominant-baseline', 'middle');
+    btnText.setAttribute('font-size', '13');
+    btnText.setAttribute('font-weight', '700');
+    btnText.setAttribute('fill', 'white');
+    btnText.setAttribute('pointer-events', 'none');
+    btnText.textContent = node.expanded ? '−' : '+';
+
+    circle.addEventListener('click', e => {
+      e.stopPropagation();
+      pushUndo();
+      node.expanded = !node.expanded;
+      render();
+    });
+
+    g.appendChild(circle);
+    g.appendChild(btnText);
+  }
+
+  // Events
+  g.addEventListener('mousedown', onNodeMouseDown);
+  g.addEventListener('click', onNodeClick);
+  g.addEventListener('dblclick', onNodeDblClick);
+  g.addEventListener('contextmenu', onNodeContextMenu);
+
+  document.getElementById('nodes-layer').appendChild(g);
+}
+
+function renderEdge(from, to, color) {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+
+  const fromDim = getNodeDim(from.text, from.id === 'root');
+  const toDim = getNodeDim(to.text, false);
+
+  const fr = Math.max(fromDim.w, fromDim.h) / 2;
+  const tr = Math.max(toDim.w, toDim.h) / 2;
+
+  const x1 = from.x + Math.cos(angle) * (fr * 0.7);
+  const y1 = from.y + Math.sin(angle) * (fr * 0.5);
+  const x2 = to.x - Math.cos(angle) * (tr * 0.7);
+  const y2 = to.y - Math.sin(angle) * (tr * 0.5);
+
+  const cp = dist * 0.35;
+  const d = `M ${x1},${y1} C ${x1 + Math.cos(angle) * cp},${y1 + Math.sin(angle) * cp} ${x2 - Math.cos(angle) * cp},${y2 - Math.sin(angle) * cp} ${x2},${y2}`;
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', color);
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('opacity', '0.65');
+  path.setAttribute('stroke-linecap', 'round');
+
+  document.getElementById('edges-layer').appendChild(path);
+}
+
+// ============================================================
+// Cloud Groups
+// ============================================================
+function collectSubtreeNodes(node, arr) {
+  arr.push(node);
+  if (node.expanded && node.children) node.children.forEach(c => collectSubtreeNodes(c, arr));
+}
+
+function getSubtreeBBox(rootNode) {
+  const nodes = [];
+  collectSubtreeNodes(rootNode, nodes);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const PAD = 28;
+  for (const n of nodes) {
+    const dim = getNodeDim(n.text, n.id === 'root');
+    minX = Math.min(minX, n.x - dim.w / 2 - PAD);
+    minY = Math.min(minY, n.y - dim.h / 2 - PAD);
+    maxX = Math.max(maxX, n.x + dim.w / 2 + PAD);
+    maxY = Math.max(maxY, n.y + dim.h / 2 + PAD);
+  }
+  return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
+}
+
+function cloudPath(x, y, w, h) {
+  // Draw a bumpy cloud shape around the bounding box
+  const cx = x + w / 2, cy = y + h / 2;
+  const rx = w / 2, ry = h / 2;
+  const bumps = Math.max(6, Math.round((w + h) / 60));
+  let d = '';
+  for (let i = 0; i <= bumps * 4; i++) {
+    const t = (i / (bumps * 4)) * Math.PI * 2;
+    const bumpR = 1 + 0.12 * Math.sin(t * bumps + 0.5);
+    const px = cx + Math.cos(t) * rx * bumpR;
+    const py = cy + Math.sin(t) * ry * bumpR;
+    d += i === 0 ? `M ${px},${py}` : ` L ${px},${py}`;
+  }
+  return d + ' Z';
+}
+
+function renderCloudGroups(layer) {
+  function visit(node) {
+    if (node.cloud) {
+      const { color = '#4299e1', label = '' } = node.cloud;
+      const bb = getSubtreeBBox(node);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', cloudPath(bb.minX, bb.minY, bb.w, bb.h));
+      path.setAttribute('fill', color + '22');
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-dasharray', '8 4');
+      path.setAttribute('stroke-linejoin', 'round');
+      layer.appendChild(path);
+
+      if (label) {
+        const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        txt.setAttribute('x', bb.minX + 12);
+        txt.setAttribute('y', bb.minY + 18);
+        txt.setAttribute('fill', color);
+        txt.setAttribute('font-size', '12');
+        txt.setAttribute('font-weight', '600');
+        txt.setAttribute('class', 'cloud-label');
+        txt.textContent = label;
+        layer.appendChild(txt);
+      }
+    }
+    if (node.children) node.children.forEach(visit);
+  }
+  visit(mindmap.root);
+}
+
+function toggleCloudGroup() {
+  if (!selectedId) return;
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  if (node.cloud) {
+    node.cloud = null;
+  } else {
+    const color = BRANCH_COLORS[Math.floor(Math.random() * BRANCH_COLORS.length)];
+    node.cloud = { color, label: '' };
+  }
+  render();
+  updateSidebar();
+}
+
+// ============================================================
+// Relation Lines
+// ============================================================
+const RELATION_COLORS = ['#805AD5','#E53E3E','#DD6B20','#3182CE','#D53F8C','#319795'];
+
+function renderRelations(layer) {
+  if (!mindmap.relations) return;
+  for (const rel of mindmap.relations) {
+    const fromNode = findNode(rel.fromId);
+    const toNode = findNode(rel.toId);
+    if (!fromNode || !toNode) continue;
+
+    const isSelected = rel.id === selectedRelationId;
+    const color = rel.color || '#805AD5';
+
+    // Slightly curved arc to distinguish from tree edges
+    const dx = toNode.x - fromNode.x;
+    const dy = toNode.y - fromNode.y;
+    const dist = Math.hypot(dx, dy);
+    const mx = (fromNode.x + toNode.x) / 2 - dy * 0.25;
+    const my = (fromNode.y + toNode.y) / 2 + dx * 0.25;
+
+    const d = `M ${fromNode.x},${fromNode.y} Q ${mx},${my} ${toNode.x},${toNode.y}`;
+
+    // Hit area (wide invisible path)
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hit.setAttribute('d', d);
+    hit.setAttribute('fill', 'none');
+    hit.setAttribute('stroke', 'transparent');
+    hit.setAttribute('stroke-width', '16');
+    hit.setAttribute('class', 'relation-line');
+    hit.setAttribute('data-rel-id', rel.id);
+    hit.addEventListener('click', e => { e.stopPropagation(); selectRelation(rel.id); });
+    hit.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); confirmDeleteRelation(rel.id); });
+
+    // Visible dashed arrow path
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', isSelected ? 2.5 : 2);
+    path.setAttribute('stroke-dasharray', '6 4');
+    path.setAttribute('opacity', isSelected ? '1' : '0.75');
+    path.setAttribute('marker-end', `url(#arrow-${rel.id})`);
+    path.setAttribute('pointer-events', 'none');
+
+    // Arrowhead marker
+    const defs = document.getElementById('canvas').querySelector('defs');
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', `arrow-${rel.id}`);
+    marker.setAttribute('markerWidth', '8');
+    marker.setAttribute('markerHeight', '8');
+    marker.setAttribute('refX', '6');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+    const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    arrowPath.setAttribute('d', 'M0,0 L0,6 L8,3 z');
+    arrowPath.setAttribute('fill', color);
+    marker.appendChild(arrowPath);
+    // Remove old marker with same id if exists
+    const old = defs.querySelector(`#arrow-${rel.id}`);
+    if (old) old.remove();
+    defs.appendChild(marker);
+
+    layer.appendChild(hit);
+    layer.appendChild(path);
+
+    // Label
+    if (rel.label) {
+      const lx = mx, ly = my - 8;
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', lx);
+      txt.setAttribute('y', ly);
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-size', '11');
+      txt.setAttribute('fill', color);
+      txt.setAttribute('font-weight', '600');
+      txt.setAttribute('pointer-events', 'none');
+      txt.textContent = rel.label;
+      layer.appendChild(txt);
+    }
+  }
+}
+
+function selectRelation(id) {
+  selectedRelationId = id;
+  selectNode(null);
+  render();
+}
+
+function confirmDeleteRelation(id) {
+  const rel = mindmap.relations.find(r => r.id === id);
+  if (!rel) return;
+  showModal('関連線を削除', `この関連線を削除しますか？`, () => {
+    pushUndo();
+    mindmap.relations = mindmap.relations.filter(r => r.id !== id);
+    selectedRelationId = null;
+    render();
+  });
+}
+
+// Relation mode toggle
+function toggleRelationMode() {
+  relationMode = !relationMode;
+  relationSource = null;
+  document.body.classList.toggle('relation-mode', relationMode);
+  document.getElementById('btn-relation-mode').classList.toggle('active', relationMode);
+  if (relationMode) {
+    document.getElementById('relation-hint').textContent = '🔗 接続元ノードをクリック → 接続先をクリック　[Esc でキャンセル]';
+  }
+}
+
+function cancelRelationMode() {
+  relationMode = false;
+  relationSource = null;
+  document.body.classList.remove('relation-mode');
+  document.getElementById('btn-relation-mode').classList.remove('active');
+}
+
+// ============================================================
+// Transform / Pan / Zoom
+// ============================================================
+function updateCanvasGroupTransform() {
+  document.getElementById('canvas-group').setAttribute(
+    'transform',
+    `translate(${tx},${ty}) scale(${scale})`
+  );
+}
+
+function updateZoomLevel() {
+  document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+}
+
+function svgPoint(clientX, clientY) {
+  const rect = document.getElementById('canvas').getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - tx) / scale,
+    y: (clientY - rect.top - ty) / scale
+  };
+}
+
+function zoomAt(clientX, clientY, factor) {
+  const rect = document.getElementById('canvas').getBoundingClientRect();
+  const cx = clientX - rect.left;
+  const cy = clientY - rect.top;
+  const newScale = Math.max(0.2, Math.min(3, scale * factor));
+  tx = cx - (cx - tx) * (newScale / scale);
+  ty = cy - (cy - ty) * (newScale / scale);
+  scale = newScale;
+  updateCanvasGroupTransform();
+  updateZoomLevel();
+}
+
+function zoomIn() { zoomAt(getCenterClient().x, getCenterClient().y, 1.2); }
+function zoomOut() { zoomAt(getCenterClient().x, getCenterClient().y, 1 / 1.2); }
+
+function getCenterClient() {
+  const rect = document.getElementById('canvas').getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function fitView() {
+  // Collect all node positions
+  const nodes = [];
+  function collect(node) {
+    nodes.push(node);
+    if (node.children && node.expanded) node.children.forEach(collect);
+  }
+  collect(mindmap.root);
+
+  if (nodes.length === 0) return;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const dim = getNodeDim(n.text, n.id === 'root');
+    minX = Math.min(minX, n.x - dim.w / 2 - 20);
+    minY = Math.min(minY, n.y - dim.h / 2 - 20);
+    maxX = Math.max(maxX, n.x + dim.w / 2 + 20);
+    maxY = Math.max(maxY, n.y + dim.h / 2 + 20);
+  }
+
+  const rect = document.getElementById('canvas').getBoundingClientRect();
+  const mapW = maxX - minX;
+  const mapH = maxY - minY;
+  const scaleX = rect.width / mapW;
+  const scaleY = rect.height / mapH;
+  scale = Math.min(scaleX, scaleY, 1.5);
+
+  tx = rect.width / 2 - (minX + mapW / 2) * scale;
+  ty = rect.height / 2 - (minY + mapH / 2) * scale;
+
+  updateCanvasGroupTransform();
+  updateZoomLevel();
+}
+
+// ============================================================
+// Canvas events
+// ============================================================
+const canvas = document.getElementById('canvas');
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  zoomAt(e.clientX, e.clientY, factor);
+}, { passive: false });
+
+canvas.addEventListener('mousedown', onCanvasMouseDown);
+canvas.addEventListener('mousemove', onCanvasMouseMove);
+canvas.addEventListener('mouseup', onCanvasMouseUp);
+canvas.addEventListener('mouseleave', onCanvasMouseUp);
+canvas.addEventListener('contextmenu', e => {
+  if (!ctxTargetId) e.preventDefault();
+});
+
+function onCanvasMouseDown(e) {
+  if (e.target.closest('.node-group') || e.target.closest('.expand-btn')) return;
+  if (e.button !== 0 && e.button !== 1) return;
+
+  closeCtxMenu();
+  panState = { startX: e.clientX, startY: e.clientY, origTx: tx, origTy: ty };
+  canvas.classList.add('panning');
+
+  if (e.button === 0 && !e.target.closest('.node-group')) {
+    selectNode(null);
+  }
+}
+
+function onCanvasMouseMove(e) {
+  if (panState) {
+    tx = panState.origTx + (e.clientX - panState.startX);
+    ty = panState.origTy + (e.clientY - panState.startY);
+    updateCanvasGroupTransform();
+    return;
+  }
+
+  if (dragState) {
+    const pt = svgPoint(e.clientX, e.clientY);
+    const node = findNode(dragState.nodeId);
+    if (node) {
+      node.x = dragState.origX + (pt.x - dragState.startX);
+      node.y = dragState.origY + (pt.y - dragState.startY);
+      dragState.moved = true;
+      render();
+    }
+  }
+}
+
+function onCanvasMouseUp(e) {
+  if (panState) { panState = null; canvas.classList.remove('panning'); }
+  if (dragState) {
+    if (!dragState.moved) {
+      // Was a click, handled by click event
+    }
+    dragState = null;
+  }
+}
+
+// ============================================================
+// Node events
+// ============================================================
+function onNodeMouseDown(e) {
+  if (e.target.closest('.expand-btn')) return;
+  e.stopPropagation();
+  if (e.button !== 0) return;
+
+  const nodeId = e.currentTarget.getAttribute('data-id');
+  const node = findNode(nodeId);
+  if (!node) return;
+
+  const pt = svgPoint(e.clientX, e.clientY);
+  dragState = { nodeId, startX: pt.x, startY: pt.y, origX: node.x, origY: node.y, moved: false };
+}
+
+function onNodeClick(e) {
+  if (e.target.closest('.expand-btn')) return;
+  e.stopPropagation();
+  const nodeId = e.currentTarget.getAttribute('data-id');
+
+  if (dragState && dragState.moved) return;
+
+  // Relation mode: first click = source, second click = target
+  if (relationMode) {
+    if (!relationSource) {
+      relationSource = nodeId;
+      document.getElementById('relation-hint').textContent = `🔗 「${findNode(nodeId).text}」から → 接続先をクリック　[Esc でキャンセル]`;
+      selectNode(nodeId);
+    } else if (relationSource === nodeId) {
+      showToast('異なるノードを選択してください', 'error');
+    } else {
+      // Create relation
+      pushUndo();
+      const color = RELATION_COLORS[((mindmap.relations || []).length) % RELATION_COLORS.length];
+      if (!mindmap.relations) mindmap.relations = [];
+      mindmap.relations.push({ id: uuid(), fromId: relationSource, toId: nodeId, label: '', color });
+      cancelRelationMode();
+      render();
+      showToast('関連線を追加しました ✓', 'success');
+    }
+    return;
+  }
+
+  selectedRelationId = null;
+  selectNode(nodeId);
+  closeCtxMenu();
+}
+
+function onNodeDblClick(e) {
+  e.stopPropagation();
+  const nodeId = e.currentTarget.getAttribute('data-id');
+  startInlineEdit(nodeId);
+}
+
+function onNodeContextMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const nodeId = e.currentTarget.getAttribute('data-id');
+  selectNode(nodeId);
+  ctxTargetId = nodeId;
+  showCtxMenu(e.clientX, e.clientY);
+}
+
+// ============================================================
+// Selection
+// ============================================================
+function selectNode(id) {
+  selectedId = id;
+  render();
+  updateSidebar();
+}
+
+// ============================================================
+// Inline Edit
+// ============================================================
+function startInlineEdit(nodeId, initialChar) {
+  selectNode(nodeId);
+  const node = findNode(nodeId);
+  if (!node) return;
+
+  const g = document.querySelector(`[data-id="${nodeId}"]`);
+  if (!g) return;
+
+  const isRoot = nodeId === 'root';
+  const dim = getNodeDim(node.text, isRoot);
+
+  const svgRect = document.getElementById('canvas').getBoundingClientRect();
+  const containerRect = document.getElementById('canvas-container').getBoundingClientRect();
+
+  // Transform node position to screen coords
+  const screenX = node.x * scale + tx + svgRect.left - containerRect.left;
+  const screenY = node.y * scale + ty + svgRect.top - containerRect.top;
+
+  const input = document.getElementById('inline-edit-input');
+  input.value = node.text;
+  input.style.left = (screenX - (dim.w * scale) / 2) + 'px';
+  input.style.top = (screenY - (dim.h * scale) / 2) + 'px';
+  input.style.width = Math.max(80, dim.w * scale) + 'px';
+  input.style.height = (dim.h * scale) + 'px';
+  input.style.fontSize = (isRoot ? 15 : 13) * scale + 'px';
+  input.style.display = 'block';
+  input.setAttribute('data-editing-id', nodeId);
+  input.focus();
+  if (initialChar) {
+    input.value = initialChar; // 既存テキストを置き換えて文字入力開始
+  } else {
+    input.select();
+  }
+}
+
+function onInlineEditKey(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitInlineEdit();
+  } else if (e.key === 'Escape') {
+    cancelInlineEdit();
+  } else if (e.key === 'Tab') {
+    e.preventDefault();
+    commitInlineEdit();
+    addChild();
+  }
+}
+
+function commitInlineEdit() {
+  const input = document.getElementById('inline-edit-input');
+  if (input.style.display === 'none') return;
+  const nodeId = input.getAttribute('data-editing-id');
+  const node = findNode(nodeId);
+  if (node && input.value.trim()) {
+    pushUndo();
+    node.text = input.value.trim();
+  }
+  input.style.display = 'none';
+  render();
+  updateSidebar();
+}
+
+function cancelInlineEdit() {
+  const input = document.getElementById('inline-edit-input');
+  input.style.display = 'none';
+}
+
+// ============================================================
+// Sidebar
+// ============================================================
+function updateSidebar() {
+  const content = document.getElementById('node-panel-content');
+  const node = selectedId ? findNode(selectedId) : null;
+
+  const actionsDisabled = !selectedId;
+  document.getElementById('btn-add-child').disabled = actionsDisabled;
+  document.getElementById('btn-add-sibling').disabled = actionsDisabled || selectedId === 'root';
+  document.getElementById('btn-cloud').disabled = actionsDisabled;
+  document.getElementById('btn-delete').disabled = actionsDisabled || selectedId === 'root';
+
+  // Update cloud button label
+  if (!actionsDisabled) {
+    const node = findNode(selectedId);
+    document.getElementById('btn-cloud').textContent = node && node.cloud ? '☁ 雲を解除' : '☁ 雲で囲む';
+  }
+
+  if (!node) {
+    content.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:13px;padding:12px 0">ノードを選択してください</div>';
+    return;
+  }
+
+  const nodeColor = node.color || '';
+  const colorSwatches = ['#E53E3E','#DD6B20','#D69E2E','#38A169','#3182CE','#805AD5','#D53F8C','#319795','#667EEA','#2D3748','']
+    .map(c => {
+      const isActive = nodeColor === c;
+      const label = c === '' ? '自動' : '';
+      if (c === '') {
+        return `<div class="color-swatch ${isActive ? 'active' : ''}" style="background:var(--border);border:2px solid ${isActive ? 'var(--text)' : 'transparent'};display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--text2)" onclick="setNodeColor('')" title="自動">自動</div>`;
+      }
+      return `<div class="color-swatch ${isActive ? 'active' : ''}" style="background:${c}" onclick="setNodeColor('${c}')" title="${c}"></div>`;
+    }).join('');
+
+  content.innerHTML = `
+    <div class="form-group">
+      <label>ラベル</label>
+      <input type="text" id="node-text-input" value="${escapeHtml(node.text)}" oninput="updateNodeText(this.value)">
+    </div>
+    <div class="form-group">
+      <label>カラー</label>
+      <div class="color-grid">${colorSwatches}</div>
+    </div>
+  `;
+}
+
+function updateNodeText(value) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  node.text = value;
+  render();
+}
+
+function setNodeColor(color) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  node.color = color || null;
+  render();
+  updateSidebar();
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+
+// ============================================================
+// Node CRUD
+// ============================================================
+function addChild() {
+  if (!selectedId) return;
+  const parent = findNode(selectedId);
+  if (!parent) return;
+
+  pushUndo();
+  const newNode = {
+    id: uuid(), text: '新しいノード', x: 0, y: 0,
+    expanded: true, color: null, children: []
+  };
+  parent.children.push(newNode);
+  parent.expanded = true;
+  render();
+  selectNode(newNode.id);
+  setTimeout(() => startInlineEdit(newNode.id), 50);
+}
+
+function addSibling() {
+  if (!selectedId || selectedId === 'root') return;
+  const parent = findParent(selectedId);
+  if (!parent) return;
+
+  pushUndo();
+  const idx = getNodeIndex(selectedId, parent);
+  const newNode = {
+    id: uuid(), text: '新しいノード', x: 0, y: 0,
+    expanded: true, color: null, children: []
+  };
+  parent.children.splice(idx + 1, 0, newNode);
+  render();
+  selectNode(newNode.id);
+  setTimeout(() => startInlineEdit(newNode.id), 50);
+}
+
+function deleteSelected() {
+  if (!selectedId || selectedId === 'root') return;
+  const node = findNode(selectedId);
+  if (!node) return;
+
+  showModal(
+    'ノードを削除',
+    `"${node.text}" とその子ノードをすべて削除しますか？`,
+    () => {
+      pushUndo();
+      removeNode(selectedId);
+      selectNode(null);
+      render();
+    }
+  );
+}
+
+function removeNode(id) {
+  function remove(children) {
+    const idx = children.findIndex(c => c.id === id);
+    if (idx !== -1) { children.splice(idx, 1); return true; }
+    return children.some(c => c.children && remove(c.children));
+  }
+  remove(mindmap.root.children);
+}
+
+// ============================================================
+// Context Menu
+// ============================================================
+function showCtxMenu(x, y) {
+  const menu = document.getElementById('ctx-menu');
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.style.display = 'block';
+
+  // Adjust if off-screen
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) menu.style.left = (x - rect.width) + 'px';
+  if (rect.bottom > window.innerHeight) menu.style.top = (y - rect.height) + 'px';
+}
+
+function closeCtxMenu() {
+  document.getElementById('ctx-menu').style.display = 'none';
+  ctxTargetId = null;
+}
+
+function ctxAddChild() { closeCtxMenu(); addChild(); }
+function ctxAddSibling() { closeCtxMenu(); if (ctxTargetId !== 'root') addSibling(); }
+function ctxEdit() { closeCtxMenu(); if (ctxTargetId) startInlineEdit(ctxTargetId); }
+function ctxDelete() { closeCtxMenu(); deleteSelected(); }
+function ctxToggleExpand() {
+  const node = findNode(ctxTargetId);
+  if (node) { pushUndo(); node.expanded = !node.expanded; render(); }
+  closeCtxMenu();
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#ctx-menu')) closeCtxMenu();
+});
+
+// ============================================================
+// Node navigation
+// ============================================================
+function navigateParent() {
+  if (!selectedId) { selectAndScrollTo('root'); return; }
+  if (selectedId === 'root') return;
+  const parent = findParent(selectedId);
+  if (parent) selectAndScrollTo(parent.id);
+}
+
+function navigateFirstChild() {
+  if (!selectedId) { selectAndScrollTo('root'); return; }
+  const node = findNode(selectedId);
+  if (!node) return;
+  if (node.children && node.children.length > 0) {
+    if (!node.expanded) { node.expanded = true; render(); }
+    selectAndScrollTo(node.children[0].id);
+  }
+}
+
+function navigateSibling(dir) {
+  if (!selectedId) { selectAndScrollTo('root'); return; }
+  if (selectedId === 'root') return;
+  const parent = findParent(selectedId);
+  if (!parent) return;
+  const siblings = parent.children;
+  const idx = siblings.findIndex(c => c.id === selectedId);
+  const next = siblings[(idx + dir + siblings.length) % siblings.length];
+  if (next) selectAndScrollTo(next.id);
+}
+
+function selectAndScrollTo(id) {
+  selectNode(id);
+  // Pan canvas so selected node is visible and centered
+  const node = findNode(id);
+  if (!node) return;
+  const rect = document.getElementById('canvas').getBoundingClientRect();
+  tx = rect.width / 2 - node.x * scale;
+  ty = rect.height / 2 - node.y * scale;
+  updateCanvasGroupTransform();
+}
+
+// ============================================================
+// Keyboard shortcuts
+// ============================================================
+document.addEventListener('keydown', e => {
+  const inInput = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
+
+  // Arrow keys & Tab: prevent browser scroll/focus-cycling regardless of inInput check timing
+  const NAV_KEYS = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Tab'];
+  if (!inInput && NAV_KEYS.includes(e.key)) e.preventDefault();
+
+  if (inInput) return;
+
+  switch (e.key) {
+    case 'Tab':        addChild(); break;
+    case 'Enter':      if (selectedId && selectedId !== 'root') addSibling(); break;
+    case 'Delete':
+    case 'Backspace':  e.preventDefault(); deleteSelected(); break;
+    case 'Escape':     selectNode(null); cancelInlineEdit(); closeCtxMenu(); cancelRelationMode(); break;
+    case 'f': case 'F': fitView(); break;
+    case '+': case '=': zoomIn(); break;
+    case '-':          zoomOut(); break;
+    case 'F2':         if (selectedId) startInlineEdit(selectedId); break;
+    case 'ArrowLeft':  navigateParent(); break;
+    case 'ArrowRight': navigateFirstChild(); break;
+    case 'ArrowUp':    navigateSibling(-1); break;
+    case 'ArrowDown':  navigateSibling(1); break;
+    default:
+      // 印字可能な1文字キー → 選択中ノードの編集を開始して文字を挿入
+      if (selectedId && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        startInlineEdit(selectedId, e.key);
+        return;
+      }
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
+      else if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveJSON(); }
+      else if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newMap(); }
+      else if (e.key === 'o' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openFile(); }
+  }
+}, true); // capture phase — fires before browser's default scroll handling
+
+// ============================================================
+// File I/O
+// ============================================================
+function newMap() {
+  showModal('新規マップ', '現在のマップを破棄して新しいマップを作成しますか？', () => {
+    mindmap = JSON.parse(JSON.stringify(DEFAULT_MAP));
+    undoStack = [];
+    selectedId = null;
+    render();
+    updateSidebar();
+    fitView();
+    showToast('新規マップを作成しました');
+  });
+}
+
+function saveJSON() {
+  const json = JSON.stringify(mindmap, null, 2);
+  downloadFile(json, `${mindmap.title || 'mindmap'}.json`, 'application/json');
+  showToast('JSONで保存しました ✓', 'success');
+}
+
+function saveYAML() {
+  if (typeof jsyaml === 'undefined') {
+    showToast('YAML保存にはインターネット接続が必要です', 'error');
+    return;
+  }
+  const yaml = jsyaml.dump(mindmap, { indent: 2, lineWidth: 120 });
+  downloadFile(yaml, `${mindmap.title || 'mindmap'}.yaml`, 'text/yaml');
+  showToast('YAMLで保存しました ✓', 'success');
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function openFile() {
+  document.getElementById('file-input').click();
+}
+
+function onFileSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const text = ev.target.result;
+      let data;
+      if (file.name.endsWith('.json')) {
+        data = JSON.parse(text);
+      } else if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
+        if (typeof jsyaml === 'undefined') {
+          showToast('YAML読み込みにはインターネット接続が必要です', 'error');
+          return;
+        }
+        data = jsyaml.load(text);
+      } else {
+        showToast('対応形式: .json, .yaml, .yml', 'error');
+        return;
+      }
+
+      if (!data || !data.root) {
+        showToast('ファイル形式が正しくありません', 'error');
+        return;
+      }
+
+      pushUndo();
+      mindmap = data;
+      selectedId = null;
+      render();
+      updateSidebar();
+      fitView();
+      showToast(`"${file.name}" を読み込みました ✓`, 'success');
+    } catch (err) {
+      showToast('読み込みエラー: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ============================================================
+// AI Ideas — prompt generation & response parsing
+// ============================================================
+function generatePrompt() {
+  if (!selectedId) { showToast('ノードを選択してください', 'error'); return; }
+  const node = findNode(selectedId);
+  if (!node) return;
+
+  const parent = findParent(selectedId);
+  const lang = document.getElementById('ai-lang').value;
+  const count = document.getElementById('ai-count').value;
+
+  // Build breadcrumb path for context
+  const path = [];
+  function buildPath(n, target) {
+    if (n.id === target) { path.push(n.text); return true; }
+    for (const c of (n.children || [])) {
+      if (buildPath(c, target)) { path.unshift(n.text); return true; }
+    }
+    return false;
+  }
+  buildPath(mindmap.root, selectedId);
+
+  const existingChildren = (node.children || []).map(c => c.text).join('、');
+
+  let prompt;
+  if (lang === 'ja') {
+    prompt = `マインドマップのノード拡張アイデアを提案してください。
+
+【対象ノード】${node.text}
+【階層パス】${path.join(' > ')}
+${existingChildren ? `【既存の子ノード】${existingChildren}` : ''}
+
+上記ノードの子ノードとして追加できる、具体的・多角的なアイデアを${count}個提案してください。
+- 各アイデアは20文字以内の簡潔なフレーズ
+- 既存の子ノードと重複しないもの
+- 以下のJSON形式で回答:
+
+{"ideas": ["アイデア1", "アイデア2", "アイデア3"]}`;
+  } else {
+    prompt = `Please suggest mind map node expansion ideas.
+
+[Target Node] ${node.text}
+[Path] ${path.join(' > ')}
+${existingChildren ? `[Existing children] ${existingChildren}` : ''}
+
+Suggest ${count} specific, diverse ideas to add as child nodes.
+- Each idea should be a concise phrase (under 40 characters)
+- Do not duplicate existing children
+- Respond in this JSON format only:
+
+{"ideas": ["idea 1", "idea 2", "idea 3"]}`;
+  }
+
+  document.getElementById('ai-prompt-text').value = prompt;
+  document.getElementById('ai-prompt-area').style.display = 'block';
+  document.getElementById('ai-response-text').value = '';
+  document.getElementById('ai-output').innerHTML = '';
+}
+
+function copyPrompt() {
+  const text = document.getElementById('ai-prompt-text').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('プロンプトをコピーしました ✓', 'success');
+  }).catch(() => {
+    // Fallback for older browsers
+    document.getElementById('ai-prompt-text').select();
+    document.execCommand('copy');
+    showToast('プロンプトをコピーしました ✓', 'success');
+  });
+}
+
+function parseAiResponse() {
+  const raw = document.getElementById('ai-response-text').value.trim();
+  if (!raw) { showToast('AIの回答を貼り付けてください', 'error'); return; }
+
+  let ideas = [];
+
+  // Try JSON parse first (looks for {"ideas":[...]} anywhere in text)
+  const jsonMatch = raw.match(/\{[\s\S]*?"ideas"\s*:\s*\[[\s\S]*?\]\s*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      ideas = (parsed.ideas || []).filter(s => typeof s === 'string' && s.trim());
+    } catch (_) {}
+  }
+
+  // Fallback: numbered list  (1. xxx  /  - xxx  /  • xxx)
+  if (ideas.length === 0) {
+    ideas = raw.split('\n')
+      .map(line => line.replace(/^[\s\d\.\-\*•・◆▶→]+/, '').trim())
+      .filter(line => line.length > 0 && line.length < 60);
+  }
+
+  if (ideas.length === 0) {
+    showToast('アイデアを解析できませんでした。JSON形式か番号付きリストで回答してもらってください', 'error');
+    return;
+  }
+
+  const output = document.getElementById('ai-output');
+  output.innerHTML = `
+    <div style="font-size:11px;color:var(--text2);margin-bottom:6px">${ideas.length}件のアイデアを検出</div>
+    ${ideas.map(idea => `
+      <div class="ai-idea-item" onclick="addIdeaAsChild('${escapeAttr(idea)}')">
+        <span class="add-icon">＋</span>
+        <span>${escapeHtml(idea)}</span>
+      </div>
+    `).join('')}
+    <button class="btn" onclick="addAllIdeas()" style="width:100%;justify-content:center;margin-top:4px">
+      ➕ すべて追加
+    </button>
+  `;
+}
+
+function escapeAttr(str) {
+  return str.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+}
+
+function addAllIdeas() {
+  if (!selectedId) return;
+  const parent = findNode(selectedId);
+  if (!parent) return;
+  const items = document.querySelectorAll('#ai-output .ai-idea-item');
+  if (items.length === 0) return;
+  pushUndo();
+  items.forEach(item => {
+    const text = item.querySelector('span:last-child').textContent.trim();
+    if (text) parent.children.push({ id: uuid(), text, x: 0, y: 0, expanded: true, color: null, children: [] });
+  });
+  parent.expanded = true;
+  render();
+  showToast(`${items.length}件のアイデアを追加しました ✓`, 'success');
+  document.getElementById('ai-output').innerHTML = '';
+}
+
+function addIdeaAsChild(text) {
+  if (!selectedId) return;
+  const parent = findNode(selectedId);
+  if (!parent) return;
+
+  pushUndo();
+  const newNode = {
+    id: uuid(), text: text, x: 0, y: 0,
+    expanded: true, color: null, children: []
+  };
+  parent.children.push(newNode);
+  parent.expanded = true;
+  render();
+  selectNode(newNode.id);
+  showToast(`"${text}" を追加しました ✓`, 'success');
+}
+
+// ============================================================
+// Theme
+// ============================================================
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('theme-btn').textContent = isDark ? '🌙' : '☀️';
+  localStorage.setItem('ss-theme', isDark ? 'light' : 'dark');
+  render();
+}
+
+// ============================================================
+// Modal
+// ============================================================
+function showModal(title, body, onConfirm) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body;
+  document.getElementById('modal-overlay').classList.add('open');
+  modalConfirmCb = onConfirm;
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  modalConfirmCb = null;
+}
+
+function confirmModal() {
+  if (modalConfirmCb) modalConfirmCb();
+  closeModal();
+}
+
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ============================================================
+// Toast
+// ============================================================
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
+// ============================================================
+// Empty hint
+// ============================================================
+function updateEmptyHint() {
+  const hasChildren = mindmap.root.children && mindmap.root.children.length > 0;
+  document.getElementById('empty-hint').style.display = hasChildren ? 'none' : 'block';
+}
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  // Restore theme
+  const savedTheme = localStorage.getItem('ss-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  document.getElementById('theme-btn').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+
+  // Render then fit view
+  render();
+  setTimeout(() => fitView(), 50);
+
+  updateSidebar();
+}
+
+// Wait for DOM + CDN script
+window.addEventListener('load', init);
+</script>
+</body>
+</html>

@@ -1200,15 +1200,19 @@ function parseInlineParts(line) {
 const _measureCanvas = document.createElement('canvas').getContext('2d');
 
 function getNodeDim(text, isRoot, nodeFontSize) {
-  const fsize  = isRoot ? 15 : (nodeFontSize === 'large' ? 16 : nodeFontSize === 'small' ? 11 : 13);
-  const fweight = isRoot ? 700 : (nodeFontSize === 'large' ? 600 : 500);
-  const lineH  = isRoot ? 20  : (nodeFontSize === 'large' ? 21  : nodeFontSize === 'small' ? 15 : 17);
-  const lines  = stripMarkdown(text || '').split('\n');
+  const FS = { xs: 9, small: 11, normal: 13, large: 16, xl: 20 };
+  const LH = { xs: 13, small: 15, normal: 17, large: 21, xl: 25 };
+  const MH = { xs: 22, small: 28, normal: 34, large: 38, xl: 46 };
+  const fs = nodeFontSize || 'normal';
+  const fsize   = isRoot ? 15 : (FS[fs] ?? 13);
+  const fweight = isRoot ? 700 : (fs === 'xl' || fs === 'large' ? 600 : 500);
+  const lineH   = isRoot ? 20 : (LH[fs] ?? 17);
+  const lines   = stripMarkdown(text || '').split('\n');
   _measureCanvas.font = `${fweight} ${fsize}px 'Segoe UI', system-ui, sans-serif`;
   const maxLineW = Math.max(...lines.map(l => _measureCanvas.measureText(l).width));
   const padH = isRoot ? 40 : 28;
   const padV = isRoot ? 14 : 10;
-  const minH = isRoot ? 44 : (nodeFontSize === 'large' ? 38 : nodeFontSize === 'small' ? 28 : 34);
+  const minH = isRoot ? 44 : (MH[fs] ?? 34);
   const w = Math.max(isRoot ? 100 : 70, maxLineW + padH);
   const h = Math.max(minH, lines.length * lineH + padV);
   return { w, h, fsize, fweight, lineH };
@@ -2303,12 +2307,14 @@ function updateSidebar() {
 
   const nodeFontSize = node.fontSize || 'normal';
   const fontSizes = [
-    { value: 'small',  label: 'S' },
-    { value: 'normal', label: 'M' },
-    { value: 'large',  label: 'L' },
+    { value: 'xs',     label: 'XS', px: '9px'  },
+    { value: 'small',  label: 'S',  px: '11px' },
+    { value: 'normal', label: 'M',  px: '13px' },
+    { value: 'large',  label: 'L',  px: '16px' },
+    { value: 'xl',     label: 'XL', px: '18px' },
   ];
   const fontSizeBtns = fontSizes.map(f =>
-    `<button class="stroke-btn ${nodeFontSize === f.value ? 'active' : ''}" onclick="setNodeFontSize('${f.value}')" style="font-size:${f.value==='small'?'11px':f.value==='large'?'15px':'13px'};min-width:32px">${f.label}</button>`
+    `<button class="stroke-btn ${nodeFontSize === f.value ? 'active' : ''}" onclick="setNodeFontSize('${f.value}')" style="font-size:${f.px};min-width:30px;padding:2px 4px">${f.label}</button>`
   ).join('');
 
   const mdHint = `<span style="font-size:10px;color:var(--text2);display:block;margin-top:3px">**太字** *斜体* __下線__ ~~取り消し線~~</span>`;

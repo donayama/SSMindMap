@@ -470,6 +470,7 @@ body.subtree-moving #move-hint { display: block; }
     <div class="toolbar-group">
       <button class="btn" onclick="saveJSON()" title="JSONで保存 (Ctrl+S)">💾 JSON</button>
       <button class="btn" onclick="saveYAML()" title="YAMLで保存">💾 YAML</button>
+      <button class="btn" onclick="saveMarkdown()" title="Markdownで保存">📝 MD</button>
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">
@@ -523,6 +524,7 @@ body.subtree-moving #move-hint { display: block; }
             <button class="btn" onclick="addChild()" id="btn-add-child">➕ 子ノード追加 <kbd>Tab</kbd></button>
             <button class="btn" onclick="addSibling()" id="btn-add-sibling">↕ 兄弟ノード追加 <kbd>Enter</kbd></button>
             <button class="btn" onclick="toggleCloudGroup()" id="btn-cloud">☁ 雲で囲む</button>
+            <button class="btn" onclick="copyNode()" id="btn-copy">⧉ コピー <kbd>Ctrl+D</kbd></button>
             <button class="btn" onclick="cutNode()" id="btn-cut">✂ カット <kbd>Ctrl+X</kbd></button>
             <button class="btn" onclick="pasteNode()" id="btn-paste">📋 ここへ貼り付け <kbd>Ctrl+V</kbd></button>
             <button class="btn danger" onclick="deleteSelected()" id="btn-delete">🗑 ノード削除 <kbd>Del</kbd></button>
@@ -611,7 +613,7 @@ body.subtree-moving #move-hint { display: block; }
         <kbd>←</kbd> 親へ &nbsp;<kbd>→</kbd> 子へ &nbsp;<kbd>↑↓</kbd> 兄弟間<br>
         <kbd>Tab</kbd> 子追加 &nbsp;<kbd>Enter</kbd> 兄弟追加 &nbsp;<kbd>Del</kbd> 削除<br>
         <kbd>F2</kbd> 編集 &nbsp;<kbd>F</kbd> 全体表示 &nbsp;<kbd>Ctrl+Z</kbd> 元に戻す<br>
-        <kbd>Ctrl+X</kbd> カット &nbsp;<kbd>Ctrl+V</kbd> 貼り付け
+        <kbd>Ctrl+D</kbd> コピー &nbsp;<kbd>Ctrl+X</kbd> カット &nbsp;<kbd>Ctrl+V</kbd> 貼り付け
       </div>
 
       <!-- Zoom controls -->
@@ -633,6 +635,7 @@ body.subtree-moving #move-hint { display: block; }
   <div class="ctx-sep"></div>
   <div class="ctx-item" onclick="ctxToggleExpand()">🔀 展開/折りたたみ</div>
   <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-copy" onclick="ctxCopy()">⧉ コピー</div>
   <div class="ctx-item" id="ctx-cut" onclick="ctxCut()">✂ カット</div>
   <div class="ctx-item" id="ctx-paste" onclick="ctxPaste()">📋 ここへ貼り付け</div>
   <div class="ctx-sep" id="ctx-layout-sep"></div>
@@ -651,6 +654,7 @@ body.subtree-moving #move-hint { display: block; }
   <button id="ntb-child"   onclick="ntbChild()"   title="子ノード追加 (Tab)">＋ 子</button>
   <button id="ntb-sibling" onclick="ntbSibling()" title="兄弟ノード追加 (Enter)">↕ 兄弟</button>
   <div class="ntb-sep"></div>
+  <button id="ntb-copy"    onclick="ntbCopy()"    title="コピー (Ctrl+D)">⧉</button>
   <button id="ntb-cut"     onclick="ntbCut()"     title="カット (Ctrl+X)">✂</button>
   <button id="ntb-paste"   onclick="ntbPaste()"   title="貼り付け (Ctrl+V)">📋</button>
   <div class="ntb-sep"></div>
@@ -1088,45 +1092,59 @@ function renderNode(node, depth, color) {
   g.setAttribute('class', 'node-group');
   g.setAttribute('transform', `translate(${node.x - dim.w / 2},${node.y - dim.h / 2})`);
 
-  // Background rect
-  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-  rect.setAttribute('width', dim.w);
-  rect.setAttribute('height', dim.h);
-  rect.setAttribute('rx', isRoot ? 22 : 12);
-  rect.setAttribute('ry', isRoot ? 22 : 12);
+  // Background shape
+  const shape = isRoot ? 'rect' : (node.shape || 'rect');
+  let bgEl;
+  if (shape === 'ellipse') {
+    bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    bgEl.setAttribute('cx', dim.w / 2);
+    bgEl.setAttribute('cy', dim.h / 2);
+    bgEl.setAttribute('rx', dim.w / 2);
+    bgEl.setAttribute('ry', dim.h / 2);
+  } else if (shape === 'diamond') {
+    const hw = dim.w / 2, hh = dim.h / 2;
+    bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    bgEl.setAttribute('points', `${hw},0 ${dim.w},${hh} ${hw},${dim.h} 0,${hh}`);
+  } else {
+    bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgEl.setAttribute('width', dim.w);
+    bgEl.setAttribute('height', dim.h);
+    bgEl.setAttribute('rx', isRoot ? 22 : 12);
+    bgEl.setAttribute('ry', isRoot ? 22 : 12);
+  }
 
   if (isRoot) {
-    rect.setAttribute('fill', color);
-    rect.setAttribute('stroke', 'none');
+    bgEl.setAttribute('fill', color);
+    bgEl.setAttribute('stroke', 'none');
   } else {
     const alpha = isDark ? '33' : '18';
-    rect.setAttribute('fill', color + alpha);
-    rect.setAttribute('stroke', color);
-    rect.setAttribute('stroke-width', '1.5');
+    bgEl.setAttribute('fill', color + alpha);
+    bgEl.setAttribute('stroke', color);
+    bgEl.setAttribute('stroke-width', '1.5');
   }
 
   if (isDropTarget) {
-    rect.setAttribute('stroke', '#38a169');
-    rect.setAttribute('stroke-width', '3');
-    rect.setAttribute('stroke-dasharray', '6 3');
-    rect.setAttribute('filter', 'url(#node-shadow)');
+    bgEl.setAttribute('stroke', '#38a169');
+    bgEl.setAttribute('stroke-width', '3');
+    bgEl.setAttribute('stroke-dasharray', '6 3');
+    bgEl.setAttribute('filter', 'url(#node-shadow)');
   } else if (isSelected) {
-    rect.setAttribute('filter', 'url(#node-selected)');
-    rect.setAttribute('stroke', '#4299e1');
-    rect.setAttribute('stroke-width', '2.5');
+    bgEl.setAttribute('filter', 'url(#node-selected)');
+    bgEl.setAttribute('stroke', '#4299e1');
+    bgEl.setAttribute('stroke-width', '2.5');
   } else {
-    rect.setAttribute('filter', 'url(#node-shadow)');
+    bgEl.setAttribute('filter', 'url(#node-shadow)');
   }
 
   // Cut indicator: dashed border
   if (isCut) {
-    rect.setAttribute('stroke', '#DD6B20');
-    rect.setAttribute('stroke-width', '2.5');
-    rect.setAttribute('stroke-dasharray', '5 3');
-    rect.setAttribute('opacity', '0.6');
+    bgEl.setAttribute('stroke', '#DD6B20');
+    bgEl.setAttribute('stroke-width', '2.5');
+    bgEl.setAttribute('stroke-dasharray', '5 3');
+    bgEl.setAttribute('opacity', '0.6');
   }
 
-  g.appendChild(rect);
+  g.appendChild(bgEl);
 
   // Multiline text with URL detection
   const fillColor = isRoot ? 'white' : (isDark ? '#f7fafc' : color);
@@ -1867,6 +1885,7 @@ function updateSidebar() {
   document.getElementById('btn-add-sibling').disabled = actionsDisabled || selectedId === 'root';
   document.getElementById('btn-cloud').disabled = actionsDisabled;
   document.getElementById('btn-delete').disabled = actionsDisabled || selectedId === 'root';
+  document.getElementById('btn-copy').disabled = actionsDisabled || selectedId === 'root';
   document.getElementById('btn-cut').disabled = actionsDisabled || selectedId === 'root';
   document.getElementById('btn-paste').disabled = !cutBuffer || !selectedId;
 
@@ -1890,10 +1909,24 @@ function updateSidebar() {
       return `<div class="color-swatch ${isActive ? 'active' : ''}" style="background:${c}" onclick="setNodeColor('${c}')" title="${c}"></div>`;
     }).join('');
 
+  const nodeShape = node.shape || 'rect';
+  const shapes = [
+    { value: 'rect',    label: '▭ 角丸矩形' },
+    { value: 'ellipse', label: '⬭ 楕円' },
+    { value: 'diamond', label: '◇ ひし形' },
+  ];
+  const shapeOptions = shapes.map(s =>
+    `<option value="${s.value}" ${nodeShape === s.value ? 'selected' : ''}>${s.label}</option>`
+  ).join('');
+
   content.innerHTML = `
     <div class="form-group">
       <label>ラベル</label>
-      <input type="text" id="node-text-input" value="${escapeHtml(node.text)}" oninput="updateNodeText(this.value)">
+      <textarea id="node-text-input" rows="3" style="resize:vertical" oninput="updateNodeText(this.value)">${escapeHtml(node.text)}</textarea>
+    </div>
+    <div class="form-group">
+      <label>形状</label>
+      <select onchange="setNodeShape(this.value)">${shapeOptions}</select>
     </div>
     <div class="form-group">
       <label>カラー</label>
@@ -1933,9 +1966,10 @@ function updateNodeToolbar() {
 
   const isRoot = selectedId === 'root';
   document.getElementById('ntb-sibling').disabled = isRoot;
-  document.getElementById('ntb-cut').disabled    = isRoot;
-  document.getElementById('ntb-delete').disabled = isRoot;
-  document.getElementById('ntb-paste').disabled  = !cutBuffer;
+  document.getElementById('ntb-copy').disabled    = isRoot;
+  document.getElementById('ntb-cut').disabled     = isRoot;
+  document.getElementById('ntb-delete').disabled  = isRoot;
+  document.getElementById('ntb-paste').disabled   = !cutBuffer;
 
   toolbar.style.display = 'flex';
 
@@ -1964,6 +1998,7 @@ function updateNodeToolbar() {
 function ntbEdit()    { startInlineEdit(selectedId); }
 function ntbChild()   { addChild(); }
 function ntbSibling() { addSibling(); }
+function ntbCopy()    { copyNode(); }
 function ntbCut()     { cutNode(); }
 function ntbPaste()   { pasteNode(); }
 function ntbDelete()  { deleteSelected(); }
@@ -1972,6 +2007,57 @@ function ntbAI()      { generateAIPrompt(selectedId); }
 // ============================================================
 // AI prompt generation
 // ============================================================
+function saveMarkdown() {
+  const md = mapToMarkdown(mindmap.root, 0);
+  const title = mindmap.title || mindmap.root.text || 'mindmap';
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = title + '.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Markdownをダウンロードしました', 'success');
+}
+
+function deepCloneNode(node) {
+  return {
+    id: uuid(),
+    text: node.text,
+    x: node.x, y: node.y,
+    expanded: node.expanded,
+    color: node.color,
+    shape: node.shape || null,
+    cloud: node.cloud || false,
+    children: (node.children || []).map(c => deepCloneNode(c)),
+  };
+}
+
+function copyNode() {
+  if (!selectedId || selectedId === 'root') {
+    showToast('ルートノードはコピーできません', 'error');
+    return;
+  }
+  const node = findNode(selectedId);
+  if (!node) return;
+  const parent = findParent(selectedId);
+  if (!parent) return;
+  pushUndo();
+  const cloned = deepCloneNode(node);
+  const idx = getNodeIndex(selectedId, parent);
+  parent.children.splice(idx + 1, 0, cloned);
+  render();
+  selectNode(cloned.id);
+  showToast('ノードをコピーしました', 'success');
+}
+
+function setNodeShape(shape) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  node.shape = shape === 'rect' ? null : shape;
+  render();
+}
+
 function mapToMarkdown(node, depth) {
   if (!node) return '';
   const lines = (node.text || '').split('\n').map((l, i) => i === 0 ? l : '  ' + l).join('\n');
@@ -2144,6 +2230,7 @@ function closeCtxMenu() {
 
 function ctxAddChild() { const id = ctxTargetId; closeCtxMenu(); if (id) { selectNode(id); addChild(); } }
 function ctxAddSibling() { const id = ctxTargetId; closeCtxMenu(); if (id && id !== 'root') { selectNode(id); addSibling(); } }
+function ctxCopy() { const id = ctxTargetId; closeCtxMenu(); if (id && id !== 'root') { selectNode(id); copyNode(); } }
 function ctxEdit() { const id = ctxTargetId; closeCtxMenu(); if (id) startInlineEdit(id); }
 function ctxDelete() { const id = ctxTargetId; closeCtxMenu(); if (id) { selectNode(id); deleteSelected(); } }
 function ctxCut() {
@@ -2276,6 +2363,7 @@ document.addEventListener('keydown', e => {
         else if (e.key === 's') { e.preventDefault(); saveJSON(); }
         else if (e.key === 'n') { e.preventDefault(); newMap(); }
         else if (e.key === 'o') { e.preventDefault(); openFile(); }
+        else if (e.key === 'd') { e.preventDefault(); copyNode(); }
         else if (e.key === 'x') { e.preventDefault(); cutNode(); }
         else if (e.key === 'v') { e.preventDefault(); pasteNode(); }
       } else if (selectedId && e.key.length === 1 && !e.altKey) {

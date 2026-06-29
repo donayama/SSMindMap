@@ -552,6 +552,7 @@ body.subtree-moving #move-hint { display: block; }
         <option value="down-only">⬇ 下のみ</option>
         <option value="up-only">⬆ 上のみ</option>
         <option value="radial">🕸 放射状</option>
+        <option value="mandala">🔲 マンダラチャート</option>
       </select>
     </div>
     <div class="toolbar-sep"></div>
@@ -1134,6 +1135,16 @@ function getBranchColor(node, depth, inheritedColor) {
 // Render
 // ============================================================
 function render() {
+  if (layoutMode === 'mandala') {
+    renderMandala();
+    updateZoomLevel();
+    updateEmptyHint();
+    updateCanvasGroupTransform();
+    updateNodeToolbar();
+    if (typeof updateTreeView === 'function') updateTreeView();
+    if (typeof updateMinimap === 'function') updateMinimap();
+    return;
+  }
   // Apply selected layout
   if (layoutMode === 'radial') {
     layoutTree(mindmap.root, 0, 0, 0, Math.PI * 2, 0);
@@ -2184,6 +2195,179 @@ function ntbAI()      { generateAIPrompt(selectedId); }
 // ============================================================
 // AI prompt generation
 // ============================================================
+// ============================================================
+// Mandala Chart Renderer
+// ============================================================
+const MCW = 96, MCH = 58, MGAP = 8;
+// block index (0-8) for each of 8 children (clockwise from TL, skipping center=4)
+const M_CHILD_BLOCK = [0, 1, 2, 5, 8, 7, 6, 3];
+// cell index (0-8) within a block for 8 surrounding cells (clockwise from TL, skipping center=4)
+const M_CELL_IDX   = [0, 1, 2, 5, 8, 7, 6, 3];
+const M_COLORS = ['#E53E3E','#DD6B20','#D69E2E','#38A169','#3182CE','#805AD5','#D53F8C','#319795'];
+
+function mBlockOrigin(bi) {
+  const bx = bi % 3, by = Math.floor(bi / 3);
+  return { x: bx * (3 * MCW + MGAP), y: by * (3 * MCH + MGAP) };
+}
+function mCellRect(bi, ci) {
+  const o = mBlockOrigin(bi);
+  const cx = ci % 3, cy = Math.floor(ci / 3);
+  const x = o.x + cx * MCW, y = o.y + cy * MCH;
+  return { x, y, cx: x + MCW / 2, cy: y + MCH / 2 };
+}
+
+function wrapMCell(text, maxCh, maxLines) {
+  if (!text) return [];
+  const lines = [], words = text.split(/[\s\n]+/);
+  let cur = '';
+  for (const w of words) {
+    if (!cur) { cur = w.slice(0, maxCh); }
+    else if (cur.length + 1 + w.length <= maxCh) { cur += ' ' + w; }
+    else { lines.push(cur); if (lines.length >= maxLines) { cur = ''; break; } cur = w.slice(0, maxCh); }
+  }
+  if (cur && lines.length < maxLines) lines.push(cur);
+  if (lines.length === maxLines && text.length > maxCh) lines[maxLines-1] = lines[maxLines-1].slice(0, maxCh-1) + '…';
+  return lines.filter(Boolean);
+}
+
+function renderMandala() {
+  const edgesLayer = document.getElementById('edges-layer');
+  const nodesLayer = document.getElementById('nodes-layer');
+  edgesLayer.innerHTML = '';
+  nodesLayer.innerHTML = '';
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const root = mindmap.root;
+  const children = (root.children || []).slice(0, 8);
+
+  // Offset to center the whole 9x9 grid
+  const totalW = 3 * (3 * MCW + MGAP) - MGAP;
+  const totalH = 3 * (3 * MCH + MGAP) - MGAP;
+  const offX = -totalW / 2, offY = -totalH / 2;
+
+  // Set node.x/y for inline-edit positioning
+  const rc = mCellRect(4, 4);
+  root.x = offX + rc.cx; root.y = offY + rc.cy;
+  children.forEach((child, i) => {
+    const cr = mCellRect(4, M_CELL_IDX[i]);
+    child.x = offX + cr.cx; child.y = offY + cr.cy;
+    (child.children || []).slice(0, 8).forEach((gc, j) => {
+      const gr = mCellRect(M_CHILD_BLOCK[i], M_CELL_IDX[j]);
+      gc.x = offX + gr.cx; gc.y = offY + gr.cy;
+    });
+  });
+
+  // Draw block background rects
+  for (let bi = 0; bi < 9; bi++) {
+    const childIdx = M_CHILD_BLOCK.indexOf(bi);
+    const color = childIdx >= 0 ? M_COLORS[childIdx] : null;
+    const o = mBlockOrigin(bi);
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    const isCenter = bi === 4;
+    bg.setAttribute('x', offX + o.x - 3); bg.setAttribute('y', offY + o.y - 3);
+    bg.setAttribute('width', 3 * MCW + 6);  bg.setAttribute('height', 3 * MCH + 6);
+    bg.setAttribute('rx', 10);
+    bg.setAttribute('fill', isCenter ? (isDark ? '#4a556840' : '#667eea18')
+                           : color   ? color + (isDark ? '14' : '0c')
+                           : 'none');
+    bg.setAttribute('stroke', isCenter ? '#667eea88' : color ? color + '44' : (isDark ? '#ffffff18' : '#00000010'));
+    bg.setAttribute('stroke-width', isCenter ? '2' : '1');
+    bg.setAttribute('pointer-events', 'none');
+    edgesLayer.appendChild(bg);
+  }
+
+  function drawMCell(bi, ci, nodeId, color, isRootCell, text) {
+    const r = mCellRect(bi, ci);
+    const isSelected = nodeId && nodeId === selectedId;
+    const isMatch = nodeId && searchResults.length > 0 && searchResults.includes(nodeId);
+    const W = MCW - 2, H = MCH - 2;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('data-id', nodeId || '');
+    g.setAttribute('class', 'node-group' + (isMatch ? ' node-search-match' : ''));
+    g.setAttribute('transform', `translate(${offX + r.x + 1},${offY + r.y + 1})`);
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('width', W); rect.setAttribute('height', H); rect.setAttribute('rx', 5);
+    if (isRootCell) {
+      rect.setAttribute('fill', '#667EEA');
+      rect.setAttribute('stroke', '#4c5ec7');
+      rect.setAttribute('stroke-width', '2');
+    } else if (nodeId && color) {
+      rect.setAttribute('fill', color + (isDark ? '33' : '1e'));
+      rect.setAttribute('stroke', color + 'bb');
+      rect.setAttribute('stroke-width', '1');
+    } else if (!nodeId) {
+      rect.setAttribute('fill', color ? color + '0a' : (isDark ? '#ffffff08' : '#00000006'));
+      rect.setAttribute('stroke', isDark ? '#ffffff14' : '#00000010');
+      rect.setAttribute('stroke-width', '0.5');
+      rect.setAttribute('stroke-dasharray', '3 3');
+    } else {
+      rect.setAttribute('fill', isDark ? '#2d374888' : '#f7fafc');
+      rect.setAttribute('stroke', isDark ? '#4a5568' : '#e2e8f0');
+      rect.setAttribute('stroke-width', '0.5');
+    }
+    if (isSelected) {
+      rect.setAttribute('filter', 'url(#node-selected)');
+      rect.setAttribute('stroke', '#4299e1');
+      rect.setAttribute('stroke-width', '2.5');
+    }
+    g.appendChild(rect);
+
+    if (text) {
+      const lines = wrapMCell(text, 10, 2);
+      const lineH = 14;
+      const startY = H / 2 - ((lines.length - 1) * lineH) / 2;
+      lines.forEach((ln, li) => {
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('x', W / 2); t.setAttribute('y', startY + li * lineH);
+        t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
+        t.setAttribute('font-size', isRootCell ? '13' : '11');
+        t.setAttribute('font-weight', isRootCell ? '700' : color ? '600' : '400');
+        t.setAttribute('fill', isRootCell ? 'white' : color ? (isDark ? '#e2e8f0' : color) : (isDark ? '#e2e8f0' : '#2d3748'));
+        t.setAttribute('pointer-events', 'none');
+        t.textContent = ln;
+        g.appendChild(t);
+      });
+    } else if (!nodeId && color) {
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', W/2); t.setAttribute('y', H/2);
+      t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
+      t.setAttribute('font-size', '16'); t.setAttribute('fill', isDark ? '#4a5568' : '#cbd5e0');
+      t.setAttribute('pointer-events', 'none');
+      t.textContent = '+';
+      g.appendChild(t);
+    }
+
+    if (nodeId) {
+      g.addEventListener('click', onNodeClick);
+      g.addEventListener('contextmenu', onNodeContextMenu);
+      g.addEventListener('mousedown', onNodeMouseDown);
+    }
+    nodesLayer.appendChild(g);
+  }
+
+  // Center block: root + 8 child slots
+  drawMCell(4, 4, 'root', null, true, root.text);
+  M_CELL_IDX.forEach((ci, i) => {
+    const child = children[i];
+    drawMCell(4, ci, child?.id || null, M_COLORS[i], false, child?.text || '');
+  });
+
+  // 8 outer blocks
+  M_CHILD_BLOCK.forEach((bi, i) => {
+    const child = children[i];
+    const color = M_COLORS[i];
+    drawMCell(bi, 4, child?.id || null, color, false, child?.text || '');
+    M_CELL_IDX.forEach((ci, j) => {
+      const gc = child ? (child.children || [])[j] : null;
+      drawMCell(bi, ci, gc?.id || null, color, false, gc?.text || '');
+    });
+  });
+
+  renderRelations(nodesLayer);
+}
+
 function saveMarkdown() {
   const md = mapToMarkdown(mindmap.root, 0);
   const title = mindmap.title || mindmap.root.text || 'mindmap';
@@ -2306,6 +2490,13 @@ function addChild() {
   if (!selectedId) return;
   const parent = findNode(selectedId);
   if (!parent) return;
+
+  if (layoutMode === 'mandala') {
+    const depth = selectedId === 'root' ? 0 : findParent(selectedId) && findParent(selectedId).id === 'root' ? 1 : 2;
+    if (depth === 0 && (parent.children || []).length >= 8) { showToast('マンダラチャートは最大8つのテーマまでです', 'error'); return; }
+    if (depth === 1 && (parent.children || []).length >= 8) { showToast('各テーマは最大8つのアイデアまでです', 'error'); return; }
+    if (depth >= 2) { showToast('マンダラチャートは2階層までです', 'error'); return; }
+  }
 
   pushUndo();
   const newNode = {

@@ -1021,7 +1021,7 @@ const TB_H_PAD = 14;  // horizontal padding left/right of each node within its s
 
 // Vertical slot size for a node and its subtree (used by LR-family layouts)
 function getSubtreeHeight(node) {
-  const { h } = getNodeDim(node.text, node.id === 'root');
+  const { h } = getNodeDim(node.text, node.id === 'root', node.fontSize);
   const minSlot = h + LR_V_PAD * 2;
   if (!node.expanded || !node.children || node.children.length === 0) return minSlot;
   const childTotal = node.children.reduce((s, c) => s + getSubtreeHeight(c), 0);
@@ -1030,7 +1030,7 @@ function getSubtreeHeight(node) {
 
 // Horizontal slot size for a node and its subtree (used by TB-family layouts)
 function getSubtreeWidth(node) {
-  const { w } = getNodeDim(node.text, node.id === 'root');
+  const { w } = getNodeDim(node.text, node.id === 'root', node.fontSize);
   const minSlot = w + TB_H_PAD * 2;
   if (!node.expanded || !node.children || node.children.length === 0) return minSlot;
   const childTotal = node.children.reduce((s, c) => s + getSubtreeWidth(c), 0);
@@ -1040,15 +1040,15 @@ function getSubtreeWidth(node) {
 // x position of children row for LR-family: keeps all siblings at same x,
 // gap sized so the widest child doesn't overlap the parent.
 function lrChildX(node, children, dir) {
-  const pw = getNodeDim(node.text, node.id === 'root').w;
-  const maxCW = Math.max(...children.map(c => getNodeDim(c.text, c.id === 'root').w));
+  const pw = getNodeDim(node.text, node.id === 'root', node.fontSize).w;
+  const maxCW = Math.max(...children.map(c => getNodeDim(c.text, c.id === 'root', c.fontSize).w));
   return node.x + dir * (pw / 2 + LR_H_GAP + maxCW / 2);
 }
 
 // y position of children row for TB-family
 function tbChildY(node, children, sign) {
-  const ph = getNodeDim(node.text, node.id === 'root').h;
-  const maxCH = Math.max(...children.map(c => getNodeDim(c.text, c.id === 'root').h));
+  const ph = getNodeDim(node.text, node.id === 'root', node.fontSize).h;
+  const maxCH = Math.max(...children.map(c => getNodeDim(c.text, c.id === 'root', c.fontSize).h));
   return node.y + sign * (ph / 2 + TB_V_GAP + maxCH / 2);
 }
 
@@ -1164,22 +1164,54 @@ function parseUrlParts(text) {
 }
 
 // ============================================================
+// Inline Markdown parsing
+// ============================================================
+function stripMarkdown(text) {
+  return (text || '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1');
+}
+
+// Parse a single line into styled parts (bold, italic, underline, strike, url, text)
+function parseInlineParts(line) {
+  const parts = [];
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|~~(.+?)~~|https?:\/\/[^\s]+)/g;
+  let last = 0, m;
+  while ((m = re.exec(line)) !== null) {
+    if (m.index > last) parts.push({ type: 'text', content: line.slice(last, m.index) });
+    const raw = m[0];
+    if (raw.startsWith('**'))      parts.push({ type: 'text', content: m[2], bold: true });
+    else if (raw.startsWith('*'))  parts.push({ type: 'text', content: m[3], italic: true });
+    else if (raw.startsWith('__')) parts.push({ type: 'text', content: m[4], underline: true });
+    else if (raw.startsWith('~~')) parts.push({ type: 'text', content: m[5], strike: true });
+    else                           parts.push({ type: 'url',  content: raw });
+    last = m.index + raw.length;
+  }
+  if (last < line.length) parts.push({ type: 'text', content: line.slice(last) });
+  if (parts.length === 0) parts.push({ type: 'text', content: line });
+  return parts;
+}
+
+// ============================================================
 // Node geometry
 // ============================================================
 const _measureCanvas = document.createElement('canvas').getContext('2d');
 
-function getNodeDim(text, isRoot) {
-  const lines = (text || '').split('\n');
-  const fontSize = isRoot ? 15 : 13;
-  const fontWeight = isRoot ? 700 : 500;
-  _measureCanvas.font = `${fontWeight} ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+function getNodeDim(text, isRoot, nodeFontSize) {
+  const fsize  = isRoot ? 15 : (nodeFontSize === 'large' ? 16 : nodeFontSize === 'small' ? 11 : 13);
+  const fweight = isRoot ? 700 : (nodeFontSize === 'large' ? 600 : 500);
+  const lineH  = isRoot ? 20  : (nodeFontSize === 'large' ? 21  : nodeFontSize === 'small' ? 15 : 17);
+  const lines  = stripMarkdown(text || '').split('\n');
+  _measureCanvas.font = `${fweight} ${fsize}px 'Segoe UI', system-ui, sans-serif`;
   const maxLineW = Math.max(...lines.map(l => _measureCanvas.measureText(l).width));
   const padH = isRoot ? 40 : 28;
   const padV = isRoot ? 14 : 10;
-  const lineH = isRoot ? 20 : 17;
+  const minH = isRoot ? 44 : (nodeFontSize === 'large' ? 38 : nodeFontSize === 'small' ? 28 : 34);
   const w = Math.max(isRoot ? 100 : 70, maxLineW + padH);
-  const h = Math.max(isRoot ? 44 : 34, lines.length * lineH + padV);
-  return { w, h };
+  const h = Math.max(minH, lines.length * lineH + padV);
+  return { w, h, fsize, fweight, lineH };
 }
 
 function getBranchColor(node, depth, inheritedColor) {
@@ -1242,6 +1274,7 @@ function renderSubtree(node, parent, depth, inheritedColor) {
 
   if (parent) renderEdge(parent, node, color);
   renderNode(node, depth, color);
+  if (node.memo) renderMemoBubble(node);
 
   if (node.expanded && node.children) {
     for (const child of node.children) {
@@ -1255,7 +1288,7 @@ function renderNode(node, depth, color) {
   const isSelected = node.id === selectedId;
   const isDropTarget = node.id === dropTargetId && dropTargetId !== null;
   const isCut = cutBuffer && cutBuffer.id === node.id;
-  const dim = getNodeDim(node.text, isRoot);
+  const dim = getNodeDim(node.text, isRoot, node.fontSize);
   const theme = document.documentElement.getAttribute('data-theme');
   const isDark = theme === 'dark';
 
@@ -1319,10 +1352,10 @@ function renderNode(node, depth, color) {
 
   g.appendChild(bgEl);
 
-  // Multiline text with URL detection
+  // Multiline text with inline markdown + URL
   const fillColor = isRoot ? 'white' : (isDark ? '#f7fafc' : color);
   const lines = (node.text || '').split('\n');
-  const lineH = isRoot ? 20 : 17;
+  const { lineH, fsize, fweight } = dim;
   const startY = dim.h / 2 - (lines.length * lineH) / 2 + lineH * 0.78;
 
   lines.forEach((line, li) => {
@@ -1330,16 +1363,17 @@ function renderNode(node, depth, color) {
     textEl.setAttribute('x', (dim.w / 2).toString());
     textEl.setAttribute('y', (startY + li * lineH).toString());
     textEl.setAttribute('text-anchor', 'middle');
-    textEl.setAttribute('font-size', isRoot ? '15' : '13');
-    textEl.setAttribute('font-weight', isRoot ? '700' : '500');
+    textEl.setAttribute('font-size', fsize);
+    textEl.setAttribute('font-weight', fweight);
     textEl.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
     textEl.setAttribute('pointer-events', 'none');
     textEl.setAttribute('fill', fillColor);
     textEl.setAttribute('user-select', 'none');
     if (isCut) textEl.setAttribute('opacity', '0.5');
 
-    const parts = parseUrlParts(line);
-    if (parts.length === 1 && parts[0].type === 'text') {
+    const parts = parseInlineParts(line);
+    const isPlain = parts.length === 1 && parts[0].type === 'text' && !parts[0].bold && !parts[0].italic && !parts[0].underline && !parts[0].strike;
+    if (isPlain) {
       textEl.textContent = parts[0].content;
     } else {
       parts.forEach(part => {
@@ -1352,12 +1386,32 @@ function renderNode(node, depth, color) {
           tspan.style.pointerEvents = 'all';
           const url = part.content;
           tspan.addEventListener('click', e => { e.stopPropagation(); window.open(url, '_blank', 'noopener'); });
+        } else {
+          const deco = [];
+          if (part.underline) deco.push('underline');
+          if (part.strike)    deco.push('line-through');
+          if (deco.length)    tspan.setAttribute('text-decoration', deco.join(' '));
+          if (part.bold)      tspan.setAttribute('font-weight', '700');
+          if (part.italic)    tspan.setAttribute('font-style', 'italic');
         }
         textEl.appendChild(tspan);
       });
     }
     g.appendChild(textEl);
   });
+
+  // Memo badge (📝) in top-right corner if memo is set
+  if (node.memo) {
+    const badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    badge.setAttribute('x', (dim.w - 4).toString());
+    badge.setAttribute('y', '13');
+    badge.setAttribute('font-size', '11');
+    badge.setAttribute('text-anchor', 'end');
+    badge.setAttribute('pointer-events', 'none');
+    badge.setAttribute('user-select', 'none');
+    badge.textContent = '📝';
+    g.appendChild(badge);
+  }
 
   // Collapse/expand button
   if (node.children && node.children.length > 0) {
@@ -1407,8 +1461,8 @@ function renderEdge(from, to, color) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
 
-  const fromDim = getNodeDim(from.text, from.id === 'root');
-  const toDim = getNodeDim(to.text, false);
+  const fromDim = getNodeDim(from.text, from.id === 'root', from.fontSize);
+  const toDim   = getNodeDim(to.text, false, to.fontSize);
 
   const fr = Math.max(fromDim.w, fromDim.h) / 2;
   const tr = Math.max(toDim.w, toDim.h) / 2;
@@ -1433,6 +1487,83 @@ function renderEdge(from, to, color) {
 }
 
 // ============================================================
+// Memo bubble
+// ============================================================
+function wrapMemoText(text, maxChars) {
+  const out = [];
+  for (const line of (text || '').split('\n')) {
+    if (line.length <= maxChars) { out.push(line); continue; }
+    const words = line.split(' ');
+    let cur = '';
+    for (const w of words) {
+      if ((cur ? cur + ' ' : '') .length + w.length > maxChars) { if (cur) out.push(cur); cur = w; }
+      else cur = cur ? cur + ' ' + w : w;
+    }
+    if (cur) out.push(cur);
+  }
+  return out.slice(0, 5);
+}
+
+function renderMemoBubble(node) {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const nodeDim = getNodeDim(node.text, node.id === 'root', node.fontSize);
+  const lines = wrapMemoText(node.memo, 28);
+  const lineH = 15, padX = 10, padY = 7;
+  const memoFontSize = 11;
+  _measureCanvas.font = `400 ${memoFontSize}px 'Segoe UI', system-ui, sans-serif`;
+  const maxW = Math.max(...lines.map(l => _measureCanvas.measureText(l).width), 60);
+  const bw = maxW + padX * 2;
+  const bh = lines.length * lineH + padY * 2;
+  const ptrH = 8;
+  const OFFSET = 16;
+
+  // bubble center-x aligns to node, positioned below
+  const bx = node.x - bw / 2;
+  const by = node.y + nodeDim.h / 2 + OFFSET + ptrH;
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('class', 'memo-bubble');
+  g.setAttribute('pointer-events', 'none');
+
+  // pointer triangle (up-pointing, at top of bubble)
+  const triX = node.x;
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  poly.setAttribute('points', `${triX - 7},${by} ${triX + 7},${by} ${triX},${by - ptrH}`);
+  poly.setAttribute('fill', isDark ? '#4a5568' : '#fffde7');
+  poly.setAttribute('stroke', isDark ? '#718096' : '#c8b900');
+  poly.setAttribute('stroke-width', '1');
+  g.appendChild(poly);
+
+  // bubble rect
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', bx);
+  rect.setAttribute('y', by);
+  rect.setAttribute('width', bw);
+  rect.setAttribute('height', bh);
+  rect.setAttribute('rx', '6');
+  rect.setAttribute('fill', isDark ? '#4a5568' : '#fffde7');
+  rect.setAttribute('stroke', isDark ? '#718096' : '#c8b900');
+  rect.setAttribute('stroke-width', '1');
+  rect.setAttribute('filter', 'url(#node-shadow)');
+  g.appendChild(rect);
+
+  // text lines
+  lines.forEach((line, i) => {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', bx + padX);
+    t.setAttribute('y', by + padY + i * lineH + lineH * 0.8);
+    t.setAttribute('font-size', memoFontSize);
+    t.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
+    t.setAttribute('fill', isDark ? '#f7fafc' : '#555500');
+    t.setAttribute('user-select', 'none');
+    t.textContent = line;
+    g.appendChild(t);
+  });
+
+  document.getElementById('nodes-layer').appendChild(g);
+}
+
+// ============================================================
 // Cloud Groups
 // ============================================================
 function collectSubtreeNodes(node, arr) {
@@ -1446,7 +1577,7 @@ function getSubtreeBBox(rootNode) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const PAD = 28;
   for (const n of nodes) {
-    const dim = getNodeDim(n.text, n.id === 'root');
+    const dim = getNodeDim(n.text, n.id === 'root', n.fontSize);
     minX = Math.min(minX, n.x - dim.w / 2 - PAD);
     minY = Math.min(minY, n.y - dim.h / 2 - PAD);
     maxX = Math.max(maxX, n.x + dim.w / 2 + PAD);
@@ -1756,7 +1887,7 @@ function fitView() {
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of nodes) {
-    const dim = getNodeDim(n.text, n.id === 'root');
+    const dim = getNodeDim(n.text, n.id === 'root', n.fontSize);
     minX = Math.min(minX, n.x - dim.w / 2 - 20);
     minY = Math.min(minY, n.y - dim.h / 2 - 20);
     maxX = Math.max(maxX, n.x + dim.w / 2 + 20);
@@ -1989,7 +2120,7 @@ function startInlineEdit(nodeId, initialChar) {
   if (!g) return;
 
   const isRoot = nodeId === 'root';
-  const dim = getNodeDim(node.text, isRoot);
+  const dim = getNodeDim(node.text, isRoot, node.fontSize);
 
   const svgRect = document.getElementById('canvas').getBoundingClientRect();
   const containerRect = document.getElementById('canvas-container').getBoundingClientRect();
@@ -2003,7 +2134,7 @@ function startInlineEdit(nodeId, initialChar) {
   input.style.left = (screenX - (dim.w * scale) / 2) + 'px';
   input.style.top = (screenY - (dim.h * scale) / 2) + 'px';
   input.style.width = Math.max(80, dim.w * scale) + 'px';
-  input.style.fontSize = (isRoot ? 15 : 13) * scale + 'px';
+  input.style.fontSize = dim.fsize * scale + 'px';
   input.style.lineHeight = '1.45';
   input.style.display = 'block';
   input.setAttribute('data-editing-id', nodeId);
@@ -2170,10 +2301,26 @@ function updateSidebar() {
     `<option value="${s.value}" ${nodeShape === s.value ? 'selected' : ''}>${s.label}</option>`
   ).join('');
 
+  const nodeFontSize = node.fontSize || 'normal';
+  const fontSizes = [
+    { value: 'small',  label: 'S' },
+    { value: 'normal', label: 'M' },
+    { value: 'large',  label: 'L' },
+  ];
+  const fontSizeBtns = fontSizes.map(f =>
+    `<button class="stroke-btn ${nodeFontSize === f.value ? 'active' : ''}" onclick="setNodeFontSize('${f.value}')" style="font-size:${f.value==='small'?'11px':f.value==='large'?'15px':'13px'};min-width:32px">${f.label}</button>`
+  ).join('');
+
+  const mdHint = `<span style="font-size:10px;color:var(--text2);display:block;margin-top:3px">**太字** *斜体* __下線__ ~~取り消し線~~</span>`;
+
   content.innerHTML = `
     <div class="form-group">
-      <label>ラベル</label>
+      <label>ラベル ${mdHint}</label>
       <textarea id="node-text-input" rows="3" style="resize:vertical" oninput="updateNodeText(this.value)">${escapeHtml(node.text)}</textarea>
+    </div>
+    <div class="form-group">
+      <label>文字サイズ</label>
+      <div style="display:flex;gap:4px">${fontSizeBtns}</div>
     </div>
     <div class="form-group">
       <label>形状</label>
@@ -2182,6 +2329,10 @@ function updateSidebar() {
     <div class="form-group">
       <label>カラー</label>
       <div class="color-grid">${colorSwatches}</div>
+    </div>
+    <div class="form-group">
+      <label>📝 メモ（吹き出し）</label>
+      <textarea id="node-memo-input" rows="3" style="resize:vertical;font-size:12px" placeholder="メモを入力…" oninput="updateNodeMemo(this.value)">${escapeHtml(node.memo || '')}</textarea>
     </div>
   `;
   updateNodeToolbar();
@@ -2202,6 +2353,22 @@ function setNodeColor(color) {
   node.color = color || null;
   render();
   updateSidebar();
+}
+
+function setNodeFontSize(size) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  node.fontSize = size === 'normal' ? null : size;
+  render();
+  updateSidebar();
+}
+
+function updateNodeMemo(value) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  node.memo = value.trim() || null;
+  render();
 }
 
 // ============================================================
@@ -2226,7 +2393,7 @@ function updateNodeToolbar() {
 
   // SVG → screen
   const rect = canvas.getBoundingClientRect();
-  const dim  = getNodeDim(node.text, isRoot);
+  const dim  = getNodeDim(node.text, isRoot, node.fontSize);
   const sx   = rect.left + node.x * scale + tx;
   const sy   = rect.top  + node.y * scale + ty;
   const nodeH = dim.h * scale;
@@ -2452,6 +2619,8 @@ function deepCloneNode(node) {
     color: node.color,
     shape: node.shape || null,
     cloud: node.cloud || false,
+    fontSize: node.fontSize || null,
+    memo: node.memo || null,
     children: (node.children || []).map(c => deepCloneNode(c)),
   };
 }

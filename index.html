@@ -1200,19 +1200,24 @@ function parseInlineParts(line) {
 const _measureCanvas = document.createElement('canvas').getContext('2d');
 
 function getNodeDim(text, isRoot, nodeFontSize) {
-  const FS = { xs: 9, small: 11, normal: 13, large: 16, xl: 20 };
-  const LH = { xs: 13, small: 15, normal: 17, large: 21, xl: 25 };
-  const MH = { xs: 22, small: 28, normal: 34, large: 38, xl: 46 };
+  const FS    = { xs: 9,  small: 11, normal: 13, large: 16, xl: 20 };
+  const LH    = { xs: 13, small: 15, normal: 17, large: 21, xl: 25 };
+  const MH    = { xs: 22, small: 28, normal: 34, large: 38, xl: 46 };
+  // Root uses larger base sizes
+  const RFS   = { xs: 11, small: 13, normal: 15, large: 18, xl: 22 };
+  const RLH   = { xs: 15, small: 18, normal: 20, large: 24, xl: 29 };
+  const RMH   = { xs: 34, small: 38, normal: 44, large: 52, xl: 62 };
   const fs = nodeFontSize || 'normal';
-  const fsize   = isRoot ? 15 : (FS[fs] ?? 13);
-  const fweight = isRoot ? 700 : (fs === 'xl' || fs === 'large' ? 600 : 500);
-  const lineH   = isRoot ? 20 : (LH[fs] ?? 17);
+  const fsize   = isRoot ? (RFS[fs] ?? 15) : (FS[fs] ?? 13);
+  // Root base weight is 600 so **bold** (700) is visibly different
+  const fweight = isRoot ? 600 : (fs === 'xl' || fs === 'large' ? 600 : 500);
+  const lineH   = isRoot ? (RLH[fs] ?? 20) : (LH[fs] ?? 17);
   const lines   = stripMarkdown(text || '').split('\n');
   _measureCanvas.font = `${fweight} ${fsize}px 'Segoe UI', system-ui, sans-serif`;
   const maxLineW = Math.max(...lines.map(l => _measureCanvas.measureText(l).width));
   const padH = isRoot ? 40 : 28;
   const padV = isRoot ? 14 : 10;
-  const minH = isRoot ? 44 : (MH[fs] ?? 34);
+  const minH = isRoot ? (RMH[fs] ?? 44) : (MH[fs] ?? 34);
   const w = Math.max(isRoot ? 100 : 70, maxLineW + padH);
   const h = Math.max(minH, lines.length * lineH + padV);
   return { w, h, fsize, fweight, lineH };

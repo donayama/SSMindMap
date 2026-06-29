@@ -201,7 +201,7 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 }
 #canvas { width: 100%; height: 100%; display: block; cursor: default; }
 #canvas.panning { cursor: grabbing; }
-#canvas.subtree-moving { cursor: copy; }
+#canvas.subtree-moving { cursor: move; }
 
 /* Inline edit input */
 #inline-edit-input {
@@ -381,6 +381,13 @@ kbd {
 /* Node SVG styles (set via JS) */
 .node-group { cursor: grab; }
 .node-group.dragging { cursor: grabbing; }
+.node-group.drop-target rect,
+.node-group.drop-target ellipse,
+.node-group.drop-target polygon {
+  stroke: var(--accent) !important;
+  stroke-width: 3 !important;
+  stroke-dasharray: 6 3;
+}
 
 /* Relation mode */
 body.relation-mode #canvas { cursor: crosshair; }
@@ -565,7 +572,13 @@ body.subtree-moving #move-hint { display: block; }
     <div class="toolbar-group">
       <button class="btn" id="btn-relation-mode" onclick="toggleRelationMode()" title="ノード間に関連線を引く">🔗 関連線</button>
     </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <button class="btn icon" id="btn-undo" onclick="undo()" title="元に戻す (Ctrl+Z)" disabled>↩</button>
+      <button class="btn icon" id="btn-redo" onclick="redo()" title="やり直す (Ctrl+Y)" disabled>↪</button>
+    </div>
     <div class="spacer"></div>
+    <span id="autosave-indicator" style="font-size:11px;color:var(--text2);opacity:0;transition:opacity 0.4s;white-space:nowrap;pointer-events:none"></span>
     <input type="text" id="map-title-input" placeholder="マップタイトル…" oninput="onTitleInput(this.value)" title="マップのタイトル（保存ファイル名に使用）">
     <div class="toolbar-group">
       <button class="btn icon" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="サイドバー">☰</button>
@@ -697,7 +710,8 @@ body.subtree-moving #move-hint { display: block; }
       <div id="kb-hints">
         <kbd>←</kbd> 親へ &nbsp;<kbd>→</kbd> 子へ &nbsp;<kbd>↑↓</kbd> 兄弟間<br>
         <kbd>Tab</kbd> 子追加 &nbsp;<kbd>Enter</kbd> 兄弟追加 &nbsp;<kbd>Del</kbd> 削除<br>
-        <kbd>F2</kbd> 編集 &nbsp;<kbd>F</kbd> 全体表示 &nbsp;<kbd>Ctrl+Z</kbd> 元に戻す<br>
+        <kbd>F2</kbd> 編集 &nbsp;<kbd>F</kbd> 全体表示 &nbsp;<kbd>Ctrl+Z</kbd> 元に戻す &nbsp;<kbd>Ctrl+Y</kbd> やり直す<br>
+        ドラッグでノードを別の親へ移動 &nbsp;(ラジアルモードのみ自由移動)<br>
         <kbd>Ctrl+D</kbd> コピー &nbsp;<kbd>Ctrl+X</kbd> カット &nbsp;<kbd>Ctrl+V</kbd> 貼り付け
       </div>
 
@@ -859,9 +873,14 @@ let dragState = null; // { nodeId, startX, startY, origX, origY, moved, isSubtre
 // Pan
 let panState = null;
 
-// Undo stack
+// Undo / Redo stacks
 let undoStack = [];
+let redoStack = [];
 const MAX_UNDO = 50;
+
+// Autosave
+const AUTOSAVE_KEY = 'ss-mindmap-autosave';
+let _autosaveTimer = null;
 
 // ============================================================
 // Utilities
@@ -901,16 +920,58 @@ function getNodeIndex(nodeId, parent) {
 function pushUndo() {
   undoStack.push(deepClone(mindmap));
   if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack = [];
+  scheduleAutosave();
+  updateUndoRedoBtns();
 }
 
 function undo() {
   if (undoStack.length === 0) { showToast('元に戻す履歴がありません', 'error'); return; }
+  redoStack.push(deepClone(mindmap));
   mindmap = undoStack.pop();
   selectedId = null;
   cutBuffer = null;
   render();
   updateSidebar();
   showToast('元に戻しました');
+  scheduleAutosave();
+  updateUndoRedoBtns();
+}
+
+function redo() {
+  if (redoStack.length === 0) { showToast('やり直す履歴がありません', 'error'); return; }
+  undoStack.push(deepClone(mindmap));
+  mindmap = redoStack.pop();
+  selectedId = null;
+  cutBuffer = null;
+  render();
+  updateSidebar();
+  showToast('やり直しました');
+  scheduleAutosave();
+  updateUndoRedoBtns();
+}
+
+function updateUndoRedoBtns() {
+  const uBtn = document.getElementById('btn-undo');
+  const rBtn = document.getElementById('btn-redo');
+  if (uBtn) uBtn.disabled = undoStack.length === 0;
+  if (rBtn) rBtn.disabled = redoStack.length === 0;
+}
+
+function scheduleAutosave() {
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(mindmap));
+      const el = document.getElementById('autosave-indicator');
+      if (el) {
+        el.textContent = '✓ 自動保存済み';
+        el.style.opacity = '1';
+        clearTimeout(el._fadeTimer);
+        el._fadeTimer = setTimeout(() => { el.style.opacity = '0'; }, 2500);
+      }
+    } catch(e) { /* storage quota */ }
+  }, 1500);
 }
 
 // Returns true if nodeId is in the subtree rooted at ancestorId
@@ -1832,7 +1893,8 @@ function onNodeMouseDown(e) {
   const node = findNode(nodeId);
   if (!node) return;
 
-  const isSubtreeMove = e.ctrlKey || e.metaKey;
+  const isTreeMode = layoutMode !== 'radial' && layoutMode !== 'mandala';
+  const isSubtreeMove = isTreeMode || e.ctrlKey || e.metaKey;
   const pt = svgPoint(e.clientX, e.clientY);
 
   dragState = {
@@ -1909,6 +1971,7 @@ function onNodeContextMenu(e) {
 // ============================================================
 function selectNode(id) {
   selectedId = id;
+  if (id) selectedRelationId = null;
   render();
   updateSidebar();
 }
@@ -2727,7 +2790,8 @@ document.addEventListener('keydown', e => {
     case 'ArrowDown':   navigateSibling(1); break;
     default:
       if (e.ctrlKey || e.metaKey) {
-        if (e.key === 'z') { e.preventDefault(); undo(); }
+        if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+        else if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
         else if (e.key === 's') { e.preventDefault(); saveJSON(); }
         else if (e.key === 'n') { e.preventDefault(); newMap(); }
         else if (e.key === 'o') { e.preventDefault(); openFile(); }
@@ -2771,11 +2835,14 @@ function newMap() {
 function createNewMap(withSample) {
   mindmap = JSON.parse(JSON.stringify(withSample ? DEFAULT_MAP : EMPTY_MAP));
   undoStack = [];
+  redoStack = [];
   selectedId = null;
   cutBuffer = null;
   document.body.classList.remove('subtree-moving');
+  localStorage.removeItem(AUTOSAVE_KEY);
   render();
   updateSidebar();
+  updateUndoRedoBtns();
   syncTitleInput();
   setTimeout(() => fitView(), 50);
   showToast('新規マップを作成しました');
@@ -2839,13 +2906,16 @@ function onFileSelected(e) {
         return;
       }
 
-      pushUndo();
+      undoStack = [];
+      redoStack = [];
       mindmap = data;
       selectedId = null;
       cutBuffer = null;
       render();
       updateSidebar();
+      updateUndoRedoBtns();
       syncTitleInput();
+      scheduleAutosave();
       setTimeout(() => fitView(), 50);
       showToast(`"${file.name}" を読み込みました ✓`, 'success');
     } catch (err) {
@@ -3087,10 +3157,23 @@ function init() {
   layoutMode = savedLayout;
   document.getElementById('layout-select').value = savedLayout;
 
+  // Restore autosaved map
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.root) {
+        mindmap = parsed;
+        showToast('前回の作業を自動復元しました ✓', 'success');
+      }
+    }
+  } catch(e) { /* ignore */ }
+
   syncTitleInput();
   render();
   setTimeout(() => fitView(), 50);
   updateSidebar();
+  updateUndoRedoBtns();
 }
 
 // ============================================================

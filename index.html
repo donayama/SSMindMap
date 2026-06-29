@@ -442,6 +442,32 @@ body.subtree-moving #move-hint { display: block; }
 .modal p { font-size: 14px; color: var(--text2); margin-bottom: 16px; line-height: 1.5; }
 .modal-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
+/* Tree view */
+.tree-item {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 0 3px 0;
+  font-size: 12px; cursor: pointer; color: var(--text);
+  border-radius: 4px; white-space: nowrap; overflow: hidden;
+}
+.tree-item:hover { background: var(--surface2); }
+.tree-item.selected { background: var(--accent); color: white; border-radius: 4px; }
+.tree-item.search-match { background: #d69e2e22; outline: 1px solid #D69E2E; border-radius: 4px; }
+.tree-item.search-match.selected { background: var(--accent); outline: none; }
+.tree-item .tree-toggle { flex-shrink:0; width:14px; text-align:center; font-size:10px; color:var(--text2); }
+.tree-item .tree-icon { flex-shrink:0; font-size:10px; }
+.tree-label { overflow:hidden; text-overflow:ellipsis; flex:1; }
+.tree-item.selected .tree-toggle { color: rgba(255,255,255,0.8); }
+.tree-children { padding-left: 14px; }
+
+/* Minimap interactive */
+#minimap { cursor: pointer; }
+#minimap-viewport { fill: var(--accent); fill-opacity: 0.12; stroke: var(--accent); stroke-width: 1; }
+
+/* Search highlight on canvas node */
+.node-search-match rect, .node-search-match ellipse, .node-search-match polygon {
+  stroke: #D69E2E !important; stroke-width: 3 !important;
+}
+
 /* Cut indicator badge */
 .cut-indicator {
   position: absolute;
@@ -471,6 +497,11 @@ body.subtree-moving #move-hint { display: block; }
       <button class="btn" onclick="saveJSON()" title="JSONで保存 (Ctrl+S)">💾 JSON</button>
       <button class="btn" onclick="saveYAML()" title="YAMLで保存">💾 YAML</button>
       <button class="btn" onclick="saveMarkdown()" title="Markdownで保存">📝 MD</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-group">
+      <button class="btn" onclick="exportPNG()" title="PNG画像として保存">🖼 PNG</button>
+      <button class="btn" onclick="exportPDF()" title="PDFとして保存">📄 PDF</button>
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">
@@ -515,6 +546,20 @@ body.subtree-moving #move-hint { display: block; }
               ノードを選択してください
             </div>
           </div>
+        </div>
+
+        <!-- Tree View -->
+        <div class="panel" id="tree-panel">
+          <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span>ツリービュー</span>
+            <div style="display:flex;gap:4px;align-items:center">
+              <input type="text" id="search-input" placeholder="🔍 検索…" oninput="onSearchInput(this.value)" style="width:110px;font-size:12px;padding:3px 7px;min-height:0">
+              <button class="btn icon" id="search-prev" onclick="navigateSearch(-1)" title="前の結果" style="padding:2px 6px;font-size:11px" disabled>▲</button>
+              <button class="btn icon" id="search-next" onclick="navigateSearch(1)" title="次の結果" style="padding:2px 6px;font-size:11px" disabled>▼</button>
+            </div>
+          </div>
+          <div id="search-status" style="font-size:11px;color:var(--text2);margin-bottom:6px;display:none"></div>
+          <div id="tree-view"></div>
         </div>
 
         <!-- Node Actions -->
@@ -616,6 +661,11 @@ body.subtree-moving #move-hint { display: block; }
         <kbd>Ctrl+D</kbd> コピー &nbsp;<kbd>Ctrl+X</kbd> カット &nbsp;<kbd>Ctrl+V</kbd> 貼り付け
       </div>
 
+      <!-- Minimap -->
+      <div id="minimap">
+        <svg id="minimap-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+
       <!-- Zoom controls -->
       <div id="zoom-controls">
         <button class="btn icon" onclick="zoomIn()">＋</button>
@@ -679,6 +729,7 @@ body.subtree-moving #move-hint { display: block; }
 <input type="file" id="file-input" accept=".json,.yaml,.yml" style="display:none" onchange="onFileSelected(event)">
 
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script>
 // ============================================================
 // Constants
@@ -1063,6 +1114,8 @@ function render() {
   updateEmptyHint();
   updateCanvasGroupTransform();
   updateNodeToolbar();
+  if (typeof updateTreeView === 'function') updateTreeView();
+  if (typeof updateMinimap === 'function') updateMinimap();
 }
 
 function renderSubtree(node, parent, depth, inheritedColor) {
@@ -1089,7 +1142,8 @@ function renderNode(node, depth, color) {
 
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('data-id', node.id);
-  g.setAttribute('class', 'node-group');
+  const isSearchMatch = searchResults.length > 0 && searchResults.includes(node.id);
+  g.setAttribute('class', 'node-group' + (isSearchMatch ? ' node-search-match' : ''));
   g.setAttribute('transform', `translate(${node.x - dim.w / 2},${node.y - dim.h / 2})`);
 
   // Background shape
@@ -1517,6 +1571,7 @@ function cancelCutPaste() {
 // Transform / Pan / Zoom
 // ============================================================
 function updateCanvasGroupTransform() {
+  if (typeof updateMinimap === 'function') updateMinimap();
   document.getElementById('canvas-group').setAttribute(
     'transform',
     `translate(${tx},${ty}) scale(${scale})`
@@ -2728,6 +2783,294 @@ function init() {
 // Persist layout preference
 document.getElementById('layout-select').addEventListener('change', function() {
   localStorage.setItem('ss-layout', this.value);
+});
+
+// ============================================================
+// Export PNG / PDF
+// ============================================================
+function getSvgDataUrl() {
+  const svg = document.getElementById('canvas');
+  const clone = svg.cloneNode(true);
+  // Remove filters that break canvas rendering
+  clone.querySelectorAll('[filter]').forEach(el => el.removeAttribute('filter'));
+  // Inline computed styles for text
+  const s = document.createElement('style');
+  s.textContent = `text { font-family: "Segoe UI", system-ui, sans-serif; }`;
+  clone.insertBefore(s, clone.firstChild);
+  const xml = new XMLSerializer().serializeToString(clone);
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+}
+
+function exportPNG() {
+  const svg = document.getElementById('canvas');
+  const rect = svg.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const dataUrl = getSvgDataUrl();
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg') || '#f0f4f8';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(img, 0, 0, W, H);
+    const a = document.createElement('a');
+    a.download = (mindmap.title || mindmap.root.text || 'mindmap') + '.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    showToast('PNGをダウンロードしました', 'success');
+  };
+  img.onerror = () => showToast('PNG出力に失敗しました', 'error');
+  img.src = dataUrl;
+}
+
+function exportPDF() {
+  if (typeof window.jspdf === 'undefined') {
+    showToast('jsPDFの読み込み中です。しばらく待ってから再試行してください', 'error');
+    return;
+  }
+  const svg = document.getElementById('canvas');
+  const rect = svg.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const dataUrl = getSvgDataUrl();
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const dpr = 2;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(img, 0, 0, W, H);
+    const imgData = canvas.toDataURL('image/png');
+    const isLandscape = W > H;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'px', format: [W, H] });
+    pdf.addImage(imgData, 'PNG', 0, 0, W, H);
+    pdf.save((mindmap.title || mindmap.root.text || 'mindmap') + '.pdf');
+    showToast('PDFをダウンロードしました', 'success');
+  };
+  img.onerror = () => showToast('PDF出力に失敗しました', 'error');
+  img.src = dataUrl;
+}
+
+// ============================================================
+// Node Search
+// ============================================================
+let searchResults = [];
+let searchIndex = -1;
+
+function onSearchInput(value) {
+  const q = value.trim().toLowerCase();
+  searchResults = [];
+  searchIndex = -1;
+
+  // Clear canvas highlights
+  document.querySelectorAll('.node-search-match').forEach(el => el.classList.remove('node-search-match'));
+
+  if (!q) {
+    document.getElementById('search-status').style.display = 'none';
+    document.getElementById('search-prev').disabled = true;
+    document.getElementById('search-next').disabled = true;
+    render();
+    updateTreeView();
+    return;
+  }
+
+  // Collect matching node IDs
+  function collect(node) {
+    if ((node.text || '').toLowerCase().includes(q)) searchResults.push(node.id);
+    if (node.children) node.children.forEach(collect);
+  }
+  collect(mindmap.root);
+
+  const status = document.getElementById('search-status');
+  if (searchResults.length === 0) {
+    status.textContent = '該当なし';
+    status.style.display = 'block';
+    document.getElementById('search-prev').disabled = true;
+    document.getElementById('search-next').disabled = true;
+    updateTreeView();
+    return;
+  }
+
+  status.textContent = `${searchResults.length}件`;
+  status.style.display = 'block';
+  document.getElementById('search-prev').disabled = false;
+  document.getElementById('search-next').disabled = false;
+
+  render();
+  updateTreeView();
+  navigateSearch(0);
+}
+
+function navigateSearch(dir) {
+  if (searchResults.length === 0) return;
+  if (dir === 0) { searchIndex = 0; }
+  else { searchIndex = (searchIndex + dir + searchResults.length) % searchResults.length; }
+  const id = searchResults[searchIndex];
+  document.getElementById('search-status').textContent = `${searchIndex + 1} / ${searchResults.length}件`;
+  selectNode(id);
+  // Scroll tree view item into view
+  const treeEl = document.querySelector(`.tree-item[data-id="${id}"]`);
+  if (treeEl) treeEl.scrollIntoView({ block: 'nearest' });
+}
+
+// ============================================================
+// Tree View
+// ============================================================
+function updateTreeView() {
+  const container = document.getElementById('tree-view');
+  const q = (document.getElementById('search-input').value || '').trim().toLowerCase();
+  container.innerHTML = '';
+  renderTreeItem(mindmap.root, container, 0, q);
+}
+
+function renderTreeItem(node, parent, depth, q) {
+  const isSelected = node.id === selectedId;
+  const isMatch = q && (node.text || '').toLowerCase().includes(q);
+  const hasChildren = node.children && node.children.length > 0;
+
+  const row = document.createElement('div');
+  row.className = 'tree-item' + (isSelected ? ' selected' : '') + (isMatch ? ' search-match' : '');
+  row.setAttribute('data-id', node.id);
+  row.style.paddingLeft = (depth * 14) + 'px';
+
+  const toggle = document.createElement('span');
+  toggle.className = 'tree-toggle';
+  if (hasChildren) {
+    toggle.textContent = node.expanded ? '▾' : '▸';
+    toggle.style.cursor = 'pointer';
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      pushUndo();
+      node.expanded = !node.expanded;
+      render();
+      updateTreeView();
+    });
+  }
+
+  const label = document.createElement('span');
+  label.className = 'tree-label';
+  label.textContent = (node.text || '').replace(/\n/g, ' ');
+  label.title = node.text || '';
+
+  row.appendChild(toggle);
+  row.appendChild(label);
+  row.addEventListener('click', () => {
+    selectNode(node.id);
+    // Focus node on canvas
+    const n = findNode(node.id);
+    if (n) {
+      const svg = document.getElementById('canvas');
+      const rect = svg.getBoundingClientRect();
+      tx = rect.width / 2 - n.x * scale;
+      ty = rect.height / 2 - n.y * scale;
+      updateCanvasGroupTransform();
+    }
+  });
+
+  parent.appendChild(row);
+
+  if (hasChildren && node.expanded) {
+    node.children.forEach(c => renderTreeItem(c, parent, depth + 1, q));
+  }
+}
+
+// ============================================================
+// Minimap
+// ============================================================
+function updateMinimap() {
+  const mm = document.getElementById('minimap-svg');
+  mm.innerHTML = '';
+
+  const mmW = 160, mmH = 100;
+  const nodes = [];
+  function collect(n) {
+    nodes.push(n);
+    if (n.expanded && n.children) n.children.forEach(collect);
+  }
+  collect(mindmap.root);
+  if (nodes.length === 0) return;
+
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs) - 60, maxX = Math.max(...xs) + 60;
+  const minY = Math.min(...ys) - 40, maxY = Math.max(...ys) + 40;
+  const mapW = maxX - minX || 1, mapH = maxY - minY || 1;
+  const scaleM = Math.min(mmW / mapW, mmH / mapH);
+  const ox = (mmW - mapW * scaleM) / 2, oy = (mmH - mapH * scaleM) / 2;
+
+  function mx(x) { return ox + (x - minX) * scaleM; }
+  function my(y) { return oy + (y - minY) * scaleM; }
+
+  // Draw edges
+  function drawEdges(node) {
+    if (!node.expanded || !node.children) return;
+    node.children.forEach(c => {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', mx(node.x)); line.setAttribute('y1', my(node.y));
+      line.setAttribute('x2', mx(c.x));    line.setAttribute('y2', my(c.y));
+      line.setAttribute('stroke', '#a0aec0'); line.setAttribute('stroke-width', '0.8');
+      mm.appendChild(line);
+      drawEdges(c);
+    });
+  }
+  drawEdges(mindmap.root);
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const isRoot = n.id === 'root';
+    const r = isRoot ? 5 : 3;
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', mx(n.x)); circle.setAttribute('cy', my(n.y)); circle.setAttribute('r', r);
+    circle.setAttribute('fill', n.id === selectedId ? '#4299e1' : (n.color || '#667EEA'));
+    mm.appendChild(circle);
+  });
+
+  // Viewport rectangle
+  const svg = document.getElementById('canvas');
+  const rect = svg.getBoundingClientRect();
+  const vpX1 = (-tx) / scale, vpY1 = (-ty) / scale;
+  const vpW = rect.width / scale, vpH = rect.height / scale;
+  const vp = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  vp.setAttribute('x', mx(vpX1)); vp.setAttribute('y', my(vpY1));
+  vp.setAttribute('width', Math.max(1, vpW * scaleM)); vp.setAttribute('height', Math.max(1, vpH * scaleM));
+  vp.setAttribute('class', 'minimap-viewport');
+  vp.setAttribute('fill', 'rgba(66,153,225,0.1)');
+  vp.setAttribute('stroke', '#4299e1'); vp.setAttribute('stroke-width', '1');
+  mm.appendChild(vp);
+}
+
+// Minimap click to pan
+document.getElementById('minimap').addEventListener('click', e => {
+  const mm = document.getElementById('minimap');
+  const r = mm.getBoundingClientRect();
+  const mmX = e.clientX - r.left, mmY = e.clientY - r.top;
+  const mmW = r.width, mmH = r.height;
+
+  const nodes = [];
+  function collect(n) { nodes.push(n); if (n.expanded && n.children) n.children.forEach(collect); }
+  collect(mindmap.root);
+  if (nodes.length === 0) return;
+
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs) - 60, maxX = Math.max(...xs) + 60;
+  const minY = Math.min(...ys) - 40, maxY = Math.max(...ys) + 40;
+  const mapW = maxX - minX || 1, mapH = maxY - minY || 1;
+  const scaleM = Math.min(mmW / mapW, mmH / mapH);
+  const ox = (mmW - mapW * scaleM) / 2, oy = (mmH - mapH * scaleM) / 2;
+
+  const worldX = (mmX - ox) / scaleM + minX;
+  const worldY = (mmY - oy) / scaleM + minY;
+  const svg = document.getElementById('canvas');
+  const cr = svg.getBoundingClientRect();
+  tx = cr.width / 2 - worldX * scale;
+  ty = cr.height / 2 - worldY * scale;
+  updateCanvasGroupTransform();
+  updateMinimap();
 });
 
 window.addEventListener('load', init);

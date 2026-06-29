@@ -468,6 +468,45 @@ body.subtree-moving #move-hint { display: block; }
   stroke: #D69E2E !important; stroke-width: 3 !important;
 }
 
+/* Emoji picker */
+#emoji-picker {
+  position: fixed; z-index: 300;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  width: 300px; padding: 8px;
+}
+#emoji-tabs {
+  display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap;
+}
+#emoji-tabs button {
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  cursor: pointer; font-size: 16px; padding: 3px 6px; line-height: 1;
+}
+#emoji-tabs button:hover, #emoji-tabs button.active { background: var(--surface2); border-color: var(--border); }
+#emoji-grid {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;
+  max-height: 200px; overflow-y: auto;
+}
+#emoji-grid button {
+  background: none; border: none; cursor: pointer;
+  font-size: 20px; padding: 4px; border-radius: 6px; line-height: 1;
+}
+#emoji-grid button:hover { background: var(--surface2); }
+
+/* Relation properties in sidebar */
+.rel-color-swatch {
+  width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; display: inline-block;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.rel-color-swatch:hover { transform: scale(1.2); }
+.rel-color-swatch.active { border-color: var(--text); transform: scale(1.15); }
+.stroke-btn {
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); cursor: pointer; font-size: 12px; color: var(--text);
+}
+.stroke-btn:hover, .stroke-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
 /* Cut indicator badge */
 .cut-indicator {
   position: absolute;
@@ -710,7 +749,15 @@ body.subtree-moving #move-hint { display: block; }
   <div class="ntb-sep"></div>
   <button id="ntb-ai"      onclick="ntbAI()"      title="AIプロンプト生成">🤖</button>
   <div class="ntb-sep"></div>
+  <button id="ntb-emoji"   onclick="ntbEmoji()"   title="絵文字挿入">😊</button>
+  <div class="ntb-sep"></div>
   <button id="ntb-delete"  onclick="ntbDelete()"  title="削除 (Delete)" class="danger">🗑</button>
+</div>
+
+<!-- Emoji Picker -->
+<div id="emoji-picker" style="display:none">
+  <div id="emoji-tabs"></div>
+  <div id="emoji-grid"></div>
 </div>
 
 <!-- Modal -->
@@ -1429,31 +1476,36 @@ function renderRelations(layer) {
     hit.addEventListener('click', e => { e.stopPropagation(); selectRelation(rel.id); });
     hit.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); confirmDeleteRelation(rel.id); });
 
+    const sw = rel.strokeWidth || 2;
+    const dash = rel.dash != null ? rel.dash : '6 4';
+    const arrow = rel.arrow || 'end';
+
+    const defs = document.getElementById('canvas').querySelector('defs');
+    function makeMarker(id, color) {
+      const old = defs.querySelector(`#${id}`);
+      if (old) old.remove();
+      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      marker.setAttribute('id', id);
+      marker.setAttribute('markerWidth', '8'); marker.setAttribute('markerHeight', '8');
+      marker.setAttribute('refX', '6'); marker.setAttribute('refY', '3');
+      marker.setAttribute('orient', 'auto');
+      const ap = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      ap.setAttribute('d', 'M0,0 L0,6 L8,3 z'); ap.setAttribute('fill', color);
+      marker.appendChild(ap); defs.appendChild(marker);
+    }
+    if (arrow === 'end' || arrow === 'both') makeMarker(`arrow-end-${rel.id}`, color);
+    if (arrow === 'both') makeMarker(`arrow-start-${rel.id}`, color);
+
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', d);
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', isSelected ? 2.5 : 2);
-    path.setAttribute('stroke-dasharray', '6 4');
+    path.setAttribute('stroke-width', isSelected ? sw + 1 : sw);
+    if (dash !== 'none') path.setAttribute('stroke-dasharray', dash);
     path.setAttribute('opacity', isSelected ? '1' : '0.75');
-    path.setAttribute('marker-end', `url(#arrow-${rel.id})`);
+    if (arrow === 'end' || arrow === 'both') path.setAttribute('marker-end', `url(#arrow-end-${rel.id})`);
+    if (arrow === 'both') path.setAttribute('marker-start', `url(#arrow-start-${rel.id})`);
     path.setAttribute('pointer-events', 'none');
-
-    const defs = document.getElementById('canvas').querySelector('defs');
-    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-    marker.setAttribute('id', `arrow-${rel.id}`);
-    marker.setAttribute('markerWidth', '8');
-    marker.setAttribute('markerHeight', '8');
-    marker.setAttribute('refX', '6');
-    marker.setAttribute('refY', '3');
-    marker.setAttribute('orient', 'auto');
-    const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    arrowPath.setAttribute('d', 'M0,0 L0,6 L8,3 z');
-    arrowPath.setAttribute('fill', color);
-    marker.appendChild(arrowPath);
-    const old = defs.querySelector(`#arrow-${rel.id}`);
-    if (old) old.remove();
-    defs.appendChild(marker);
 
     layer.appendChild(hit);
     layer.appendChild(path);
@@ -1476,8 +1528,18 @@ function renderRelations(layer) {
 
 function selectRelation(id) {
   selectedRelationId = id;
-  selectNode(null);
+  selectedId = null;
   render();
+  updateSidebar();
+}
+
+function setRelProp(key, value) {
+  const rel = (mindmap.relations || []).find(r => r.id === selectedRelationId);
+  if (!rel) return;
+  pushUndo();
+  rel[key] = value;
+  render();
+  updateSidebar();
 }
 
 function confirmDeleteRelation(id) {
@@ -1933,8 +1995,68 @@ function cancelInlineEdit() {
 // ============================================================
 function updateSidebar() {
   const content = document.getElementById('node-panel-content');
-  const node = selectedId ? findNode(selectedId) : null;
 
+  // Relation selected — show relation properties
+  if (selectedRelationId) {
+    const rel = (mindmap.relations || []).find(r => r.id === selectedRelationId);
+    if (rel) {
+      const REL_COLORS = ['#805AD5','#E53E3E','#DD6B20','#3182CE','#38A169','#D53F8C','#319795','#000000'];
+      const colorSwatches = REL_COLORS.map(c => {
+        const active = (rel.color || '#805AD5') === c;
+        return `<div class="rel-color-swatch ${active ? 'active' : ''}" style="background:${c};border-color:${active ? 'var(--text)' : 'transparent'}" onclick="setRelProp('color','${c}')"></div>`;
+      }).join('');
+      const dashes = [
+        { val: '6 4',   label: '- - -' },
+        { val: 'none',  label: '───' },
+        { val: '2 3',   label: '···' },
+        { val: '10 4 2 4', label: '-·-' },
+      ];
+      const dashBtns = dashes.map(d =>
+        `<button class="stroke-btn ${(rel.dash||'6 4')===d.val?'active':''}" onclick="setRelProp('dash','${d.val}')">${d.label}</button>`
+      ).join('');
+      const arrows = [
+        { val: 'end',   label: '→' },
+        { val: 'both',  label: '↔' },
+        { val: 'none',  label: '──' },
+      ];
+      const arrowBtns = arrows.map(a =>
+        `<button class="stroke-btn ${(rel.arrow||'end')===a.val?'active':''}" onclick="setRelProp('arrow','${a.val}')">${a.label}</button>`
+      ).join('');
+      const w = rel.strokeWidth || 2;
+      content.innerHTML = `
+        <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">関連線プロパティ</div>
+        <div class="form-group">
+          <label>ラベル</label>
+          <input type="text" value="${escapeHtml(rel.label||'')}" oninput="setRelProp('label',this.value)" placeholder="ラベルなし">
+        </div>
+        <div class="form-group">
+          <label>色</label>
+          <div class="color-grid">${colorSwatches}</div>
+        </div>
+        <div class="form-group">
+          <label>太さ</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" min="1" max="8" step="0.5" value="${w}" oninput="setRelProp('strokeWidth',parseFloat(this.value));this.nextElementSibling.textContent=this.value+'px'" style="flex:1">
+            <span style="font-size:12px;min-width:28px">${w}px</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>線種</label>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">${dashBtns}</div>
+        </div>
+        <div class="form-group">
+          <label>矢印</label>
+          <div style="display:flex;gap:4px">${arrowBtns}</div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn danger" style="width:100%;justify-content:center" onclick="confirmDeleteRelation('${rel.id}')">🗑 関連線を削除</button>
+        </div>
+      `;
+      return;
+    }
+  }
+
+  const node = selectedId ? findNode(selectedId) : null;
   const actionsDisabled = !selectedId;
   document.getElementById('btn-add-child').disabled = actionsDisabled;
   document.getElementById('btn-add-sibling').disabled = actionsDisabled || selectedId === 'root';
@@ -2779,6 +2901,75 @@ function init() {
   setTimeout(() => fitView(), 50);
   updateSidebar();
 }
+
+// ============================================================
+// Emoji Picker
+// ============================================================
+const EMOJI_CATS = {
+  '😊 顔': ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😜','🤔','😐','😑','😶','🙄','😏','😒','😔','😢','😭','😤','😠','🥺','😬','😱','😴','🤯','🤩','🥳','😎','🤓','🧐'],
+  '👍 ジェスチャー': ['👍','👎','👏','🙌','🤝','🤜','🤛','✊','👊','🤞','✌','🤟','🤙','👌','🤏','☝','👆','👇','👈','👉','🖐','✋','🖖','💪','🦾','🦿'],
+  '❤️ 記号': ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','⭐','🌟','💫','✨','🔥','💥','❄️','🌈','☀️','⚡','🌙','💯','✅','❌','⚠️','🔴','🟡','🟢','🔵'],
+  '📌 ビジネス': ['📌','📍','📎','🖇','📏','📐','✂️','🗂','📁','📂','📊','📈','📉','📋','📝','🖊','🖋','✒️','📌','🗓','📅','📆','🔖','💡','🔍','🔎','🔐','🔑','🔒','🔓','⚙️','🛠','💼','📱','💻','🖥','⌨️','🖱'],
+  '🏠 場所': ['🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏧','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','🗼','⛩','🕌','🛕','⛪','🕍','🗽','⛲','🎡','🎢','🎠','🏟','🏗','🏘','🏚'],
+  '🍎 食べ物': ['🍎','🍊','🍋','🍇','🍓','🍒','🍑','🥭','🍍','🥝','🍅','🥑','🍆','🌽','🥕','🧅','🧄','🍄','🥦','🥬','🥒','🌶','🫑','🫒','🧆','🥚','🍳','🥘','🍲','🥗','🍿','🧂'],
+  '🚀 その他': ['🚀','✈️','🚗','🚕','🚙','🚌','🚎','🏎','🚓','🚑','🚒','🚐','🚚','🚛','🚜','🛸','🛩','🛫','🛬','🚁','🚂','🚃','🚄','🚅','🛳','⛴','🚢','⛵','🚤','🛥','🎯','🎲','🎮','🕹','🎰','🎭','🎨','🎬','🎤','🎧','🎼','🎵','🎶'],
+};
+let emojiCatIndex = 0;
+
+function openEmojiPicker() {
+  if (!selectedId) return;
+  const picker = document.getElementById('emoji-picker');
+  const toolbar = document.getElementById('node-toolbar');
+  const btn = document.getElementById('ntb-emoji');
+  if (picker.style.display !== 'none') { picker.style.display = 'none'; return; }
+
+  const cats = Object.keys(EMOJI_CATS);
+  const tabsEl = document.getElementById('emoji-tabs');
+  tabsEl.innerHTML = cats.map((k, i) =>
+    `<button class="${i === emojiCatIndex ? 'active' : ''}" onclick="switchEmojiCat(${i})">${k.split(' ')[0]}</button>`
+  ).join('');
+  renderEmojiGrid();
+
+  const btnRect = btn.getBoundingClientRect();
+  picker.style.display = 'block';
+  picker.style.left = Math.min(btnRect.left, window.innerWidth - 310) + 'px';
+  picker.style.top = (btnRect.bottom + 6) + 'px';
+}
+
+function switchEmojiCat(i) {
+  emojiCatIndex = i;
+  document.querySelectorAll('#emoji-tabs button').forEach((b, j) => b.classList.toggle('active', j === i));
+  renderEmojiGrid();
+}
+
+function renderEmojiGrid() {
+  const cats = Object.keys(EMOJI_CATS);
+  const emojis = EMOJI_CATS[cats[emojiCatIndex]];
+  document.getElementById('emoji-grid').innerHTML = emojis.map(e =>
+    `<button onclick="insertEmoji('${e}')">${e}</button>`
+  ).join('');
+}
+
+function insertEmoji(emoji) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  node.text = emoji + ' ' + node.text;
+  document.getElementById('emoji-picker').style.display = 'none';
+  render();
+  updateSidebar();
+  showToast(`${emoji} を挿入しました`, 'success');
+}
+
+function ntbEmoji() { openEmojiPicker(); }
+
+// Close emoji picker on outside click
+document.addEventListener('click', e => {
+  const picker = document.getElementById('emoji-picker');
+  if (picker.style.display !== 'none' && !picker.contains(e.target) && e.target.id !== 'ntb-emoji') {
+    picker.style.display = 'none';
+  }
+}, true);
 
 // Persist layout preference
 document.getElementById('layout-select').addEventListener('change', function() {

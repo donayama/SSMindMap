@@ -1058,6 +1058,7 @@ function render() {
   updateZoomLevel();
   updateEmptyHint();
   updateCanvasGroupTransform();
+  updateNodeToolbar();
 }
 
 function renderSubtree(node, parent, depth, inheritedColor) {
@@ -1924,7 +1925,7 @@ function setNodeColor(color) {
 // ============================================================
 function updateNodeToolbar() {
   const toolbar = document.getElementById('node-toolbar');
-  const editActive = document.getElementById('inline-edit-input').style.display !== 'none';
+  const editActive = document.getElementById('inline-edit-input').style.display === 'block';
   if (!selectedId || editActive) { toolbar.style.display = 'none'; return; }
 
   const node = findNode(selectedId);

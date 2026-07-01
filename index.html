@@ -51,6 +51,8 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
   box-shadow: var(--shadow);
   z-index: 10;
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 .logo {
   display: flex;
@@ -102,6 +104,25 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 #header .spacer { flex: 1; }
 
+@media (max-width: 800px) {
+  :root {
+    --tree-pane-width: 220px;
+    --sidebar-width: 240px;
+  }
+  #header {
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .logo span:last-child { display: none; }
+  .map-controls { min-width: 210px; }
+  #map-title-input { min-width: 120px; max-width: 180px; }
+  #tree-pane,
+  #sidebar { display: none !important; }
+  #canvas-container { flex: 1 1 100%; min-width: 0; }
+  #kb-hints { display: none; }
+  #move-guide { max-width: calc(100vw - 24px); font-size: 11px; }
+}
+
 /* Map title input in header */
 #map-title-input {
   border: 1px solid transparent;
@@ -119,6 +140,27 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 #map-title-input:hover { border-color: var(--border); background: var(--surface2); }
 #map-title-input:focus { border-color: var(--accent); background: var(--surface2); }
 #map-title-input::placeholder { color: var(--text2); font-weight: 400; }
+.map-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 250px;
+}
+.map-controls-label {
+  font-size: 11px;
+  color: var(--text2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+#map-switcher {
+  width: 160px;
+  min-width: 120px;
+}
+#map-count {
+  font-size: 11px;
+  color: var(--text2);
+  white-space: nowrap;
+}
 
 /* Layout select */
 #layout-select {
@@ -135,9 +177,11 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 
 /* Main layout */
 #main { display: flex; flex: 1; overflow: hidden; }
+#canvas-container { order: 2; }
 
 /* Tree pane / Sidebar */
 #tree-pane {
+  order: 1;
   width: var(--tree-pane-width);
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -148,6 +192,8 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
   flex-shrink: 0;
 }
 #tree-pane.collapsed { width: 0; border-right-width: 0; }
+body.tree-right #tree-pane { order: 4; border-right: 0; border-left: 1px solid var(--border); }
+body.tree-hidden #tree-pane { display: none; }
 #tree-pane .panel {
   height: 100%;
   display: flex;
@@ -156,6 +202,7 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 }
 #tree-view { flex: 1; min-height: 0; overflow-y: auto; }
 #sidebar {
+  order: 3;
   width: var(--sidebar-width);
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -166,6 +213,9 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
   flex-shrink: 0;
 }
 #sidebar.collapsed { width: 0; }
+body.sidebar-left #sidebar { order: 0; }
+body.sidebar-right #sidebar { order: 3; border-right: 0; border-left: 1px solid var(--border); }
+body.sidebar-hidden #sidebar { display: none; }
 .panel-tabs {
   display: flex;
   gap: 4px;
@@ -427,6 +477,25 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
   line-height: 1.8;
   pointer-events: none;
 }
+#move-guide {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: 360px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  pointer-events: none;
+}
+#move-guide strong {
+  color: var(--text);
+  font-size: 12px;
+}
 kbd {
   display: inline-block;
   padding: 1px 5px;
@@ -656,8 +725,13 @@ body.subtree-moving #move-hint { display: block; }
     </div>
     <div class="spacer"></div>
     <span id="autosave-indicator" style="font-size:11px;color:var(--text2);opacity:0;transition:opacity 0.4s;white-space:nowrap;pointer-events:none"></span>
-    <select id="map-switcher" onchange="switchStoredMap(this.value)" title="ブラウザ内のマップを切り替え"></select>
-    <input type="text" id="map-title-input" placeholder="マップタイトル…" oninput="onTitleInput(this.value)" title="マップのタイトル（保存ファイル名に使用）">
+    <div class="map-controls">
+      <span class="map-controls-label">マップ</span>
+      <select id="map-switcher" onchange="switchStoredMap(this.value)" title="ブラウザ内のマップを切り替え"></select>
+      <span id="map-count"></span>
+      <button class="btn icon" onclick="createQuickMap()" title="ブラウザ内に新しい空白マップを追加">＋</button>
+    </div>
+    <input type="text" id="map-title-input" placeholder="マップタイトル…" oninput="onTitleInput(this.value)" title="現在のマップ名">
     <div class="toolbar-group">
       <button class="btn icon" id="tree-toggle-btn" onclick="toggleTreePane()" title="ノードツリー">🌳</button>
       <button class="btn icon" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="プロパティ/AI">☰</button>
@@ -719,12 +793,35 @@ body.subtree-moving #move-hint { display: block; }
         <div class="panel sidebar-section" id="settings-panel" data-panel="settings">
           <div class="panel-title">設定</div>
           <div class="form-group">
+            <label>ノードツリーの表示位置</label>
+            <select id="setting-tree-position" onchange="setPanePosition('tree', this.value)">
+              <option value="left">左</option>
+              <option value="right">右</option>
+              <option value="hidden">非表示</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>ノードプロパティの表示位置</label>
+            <select id="setting-sidebar-position" onchange="setPanePosition('sidebar', this.value)">
+              <option value="right">右</option>
+              <option value="left">左</option>
+              <option value="hidden">非表示</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer">
               <input type="checkbox" id="setting-confirm-delete" onchange="setConfirmDelete(this.checked)">
               <span>削除前に確認する</span>
             </label>
             <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-top:4px">
               OFFにするとノード削除と関連線削除を確認なしで実行します。
+            </div>
+          </div>
+          <div class="form-group">
+            <label>複数マップ</label>
+            <div style="display:flex;gap:6px">
+              <button class="btn" onclick="createQuickMap()" style="flex:1;justify-content:center">＋ 空白マップ</button>
+              <button class="btn" onclick="focusMapSwitcher()" style="flex:1;justify-content:center">切り替え</button>
             </div>
           </div>
         </div>
@@ -796,6 +893,7 @@ body.subtree-moving #move-hint { display: block; }
 
       <!-- Subtree move hint -->
       <div id="move-hint">✂ カット済み: 貼り付け先ノードを選んで Ctrl+V &nbsp;[Esc でキャンセル]</div>
+      <div id="move-guide"><strong>移動</strong><br>ノードを選択すると移動方法を表示します</div>
 
       <!-- Inline edit (textarea for multiline support) -->
       <textarea id="inline-edit-input" rows="1" onkeydown="onInlineEditKey(event)" oninput="autoResizeInlineEdit()" onblur="commitInlineEdit()"></textarea>
@@ -811,7 +909,7 @@ body.subtree-moving #move-hint { display: block; }
         <kbd>←</kbd> 親へ &nbsp;<kbd>→</kbd> 子へ &nbsp;<kbd>↑↓</kbd> 兄弟間<br>
         <kbd>Tab</kbd> 子追加 &nbsp;<kbd>Enter</kbd> 兄弟追加 &nbsp;<kbd>Del</kbd> 削除<br>
         <kbd>F2</kbd> 編集 &nbsp;<kbd>F</kbd> 全体表示 &nbsp;<kbd>Ctrl+Z</kbd> 元に戻す &nbsp;<kbd>Ctrl+Y</kbd> やり直す<br>
-        ドラッグでノードを別の親へ移動 &nbsp;(ラジアルモードのみ自由移動)<br>
+        <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+ドラッグで親変更 &nbsp;(ラジアルのみ通常ドラッグで位置移動)<br>
         <kbd>Ctrl+D</kbd> コピー &nbsp;<kbd>Ctrl+X</kbd> カット &nbsp;<kbd>Ctrl+V</kbd> 貼り付け
       </div>
 
@@ -987,7 +1085,7 @@ const AUTOSAVE_KEY = 'ss-mindmap-autosave';
 const MAP_LIBRARY_KEY = 'ss-mindmap-library';
 const CURRENT_MAP_ID_KEY = 'ss-current-map-id';
 const SETTINGS_KEY = 'ss-mindmap-settings';
-let appSettings = { confirmDelete: true };
+let appSettings = { confirmDelete: true, treePosition: 'left', sidebarPosition: 'right' };
 let currentMapId = null;
 let _autosaveTimer = null;
 
@@ -1113,7 +1211,7 @@ function loadSettings() {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     appSettings = { ...appSettings, ...saved };
   } catch(e) {
-    appSettings = { confirmDelete: true };
+    appSettings = { confirmDelete: true, treePosition: 'left', sidebarPosition: 'right' };
   }
 }
 
@@ -1124,12 +1222,38 @@ function saveSettings() {
 function syncSettingsUI() {
   const confirmDelete = document.getElementById('setting-confirm-delete');
   if (confirmDelete) confirmDelete.checked = appSettings.confirmDelete !== false;
+  const treePosition = document.getElementById('setting-tree-position');
+  if (treePosition) treePosition.value = appSettings.treePosition || 'left';
+  const sidebarPosition = document.getElementById('setting-sidebar-position');
+  if (sidebarPosition) sidebarPosition.value = appSettings.sidebarPosition || 'right';
 }
 
 function setConfirmDelete(value) {
   appSettings.confirmDelete = !!value;
   saveSettings();
   showToast(appSettings.confirmDelete ? '削除確認を有効にしました' : '削除確認を無効にしました');
+}
+
+function applyPaneLayout() {
+  const treePosition = appSettings.treePosition || 'left';
+  const sidebarPosition = appSettings.sidebarPosition || 'right';
+  document.body.classList.toggle('tree-right', treePosition === 'right');
+  document.body.classList.toggle('tree-hidden', treePosition === 'hidden');
+  document.body.classList.toggle('sidebar-left', sidebarPosition === 'left');
+  document.body.classList.toggle('sidebar-right', sidebarPosition === 'right');
+  document.body.classList.toggle('sidebar-hidden', sidebarPosition === 'hidden');
+  setTimeout(() => {
+    updateNodeToolbar();
+    if (typeof updateMinimap === 'function') updateMinimap();
+  }, 0);
+}
+
+function setPanePosition(pane, value) {
+  if (pane === 'tree') appSettings.treePosition = value;
+  if (pane === 'sidebar') appSettings.sidebarPosition = value;
+  saveSettings();
+  applyPaneLayout();
+  showToast('表示位置を更新しました');
 }
 
 function getMapLabel(map) {
@@ -1180,6 +1304,8 @@ function renderMapSwitcher() {
   const select = document.getElementById('map-switcher');
   if (!select) return;
   const library = loadMapLibrary();
+  const countEl = document.getElementById('map-count');
+  if (countEl) countEl.textContent = `${Math.max(library.maps.length, 1)}件`;
   select.innerHTML = '';
   if (library.maps.length === 0) {
     const opt = document.createElement('option');
@@ -1198,6 +1324,19 @@ function renderMapSwitcher() {
       select.appendChild(opt);
     });
   select.value = ensureCurrentMapId();
+}
+
+function focusMapSwitcher() {
+  const switcher = document.getElementById('map-switcher');
+  if (switcher) {
+    switcher.focus();
+    showToast('ヘッダのマップ一覧から切り替えできます');
+  }
+}
+
+function createQuickMap() {
+  createNewMap(false);
+  showSidePanel('node');
 }
 
 function switchStoredMap(id) {
@@ -1506,6 +1645,7 @@ function render() {
     updateEmptyHint();
     updateCanvasGroupTransform();
     updateNodeToolbar();
+    updateMoveGuide();
     updateCommandButtons();
     if (typeof updateTreeView === 'function') updateTreeView();
     if (typeof updateMinimap === 'function') updateMinimap();
@@ -1539,6 +1679,7 @@ function render() {
   updateEmptyHint();
   updateCanvasGroupTransform();
   updateNodeToolbar();
+  updateMoveGuide();
   updateCommandButtons();
   if (typeof updateTreeView === 'function') updateTreeView();
   if (typeof updateMinimap === 'function') updateMinimap();
@@ -2259,6 +2400,7 @@ function fitView() {
   }
 
   const rect = document.getElementById('canvas').getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
   const mapW = maxX - minX;
   const mapH = maxY - minY;
   const scaleX = rect.width / mapW;
@@ -2380,6 +2522,7 @@ function onCanvasMouseUp(e) {
     }
     dropTargetId = null;
     canvas.classList.remove('subtree-moving');
+    document.body.classList.remove('subtree-moving');
     dragState = null;
     if (needRender) render();
   }
@@ -2414,6 +2557,8 @@ function onNodeMouseDown(e) {
 
   if (isSubtreeMove) {
     canvas.classList.add('subtree-moving');
+    document.body.classList.add('subtree-moving');
+    document.getElementById('move-hint').textContent = '移動先の親ノードに重ねてドロップ　[Esc でキャンセル]';
   }
 }
 
@@ -2805,6 +2950,29 @@ function updateNodeToolbar() {
   toolbar.style.top  = top  + 'px';
 }
 
+function updateMoveGuide() {
+  const guide = document.getElementById('move-guide');
+  if (!guide) return;
+  if (cutBuffer) {
+    const cutNode = findNode(cutBuffer.id);
+    guide.innerHTML = `<strong>移動中</strong><br>「${escapeHtml(cutNode?.text || 'ノード')}」の貼り付け先を選択して <kbd>Ctrl</kbd>+<kbd>V</kbd>`;
+    return;
+  }
+  if (!selectedId) {
+    guide.innerHTML = '<strong>移動</strong><br>ノードを選択すると移動方法を表示します';
+    return;
+  }
+  if (selectedId === 'root') {
+    guide.innerHTML = '<strong>移動</strong><br>ルートノードは移動できません。子ノードを選択してください';
+    return;
+  }
+  if (layoutMode === 'radial') {
+    guide.innerHTML = '<strong>移動</strong><br>ドラッグで位置移動、<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+ドラッグで別の親へ移動';
+  } else {
+    guide.innerHTML = '<strong>移動</strong><br><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+ドラッグで別の親へ移動、または <kbd>Ctrl</kbd>+<kbd>X</kbd> → 貼付先 → <kbd>Ctrl</kbd>+<kbd>V</kbd>';
+  }
+}
+
 function ntbEdit()    { startInlineEdit(selectedId); }
 function ntbChild()   { addChild(); }
 function ntbSibling() { addSibling(); }
@@ -3107,10 +3275,24 @@ function escapeHtml(str) {
 }
 
 function toggleSidebar() {
+  if (appSettings.sidebarPosition === 'hidden') {
+    appSettings.sidebarPosition = 'right';
+    saveSettings();
+    syncSettingsUI();
+    applyPaneLayout();
+    return;
+  }
   document.getElementById('sidebar').classList.toggle('collapsed');
 }
 
 function toggleTreePane() {
+  if (appSettings.treePosition === 'hidden') {
+    appSettings.treePosition = 'left';
+    saveSettings();
+    syncSettingsUI();
+    applyPaneLayout();
+    return;
+  }
   document.getElementById('tree-pane').classList.toggle('collapsed');
 }
 
@@ -3794,6 +3976,7 @@ function updateEmptyHint() {
 function init() {
   loadSettings();
   syncSettingsUI();
+  applyPaneLayout();
 
   const savedTheme = localStorage.getItem('ss-theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
@@ -4157,6 +4340,7 @@ function updateMinimap() {
   // Viewport rectangle
   const svg = document.getElementById('canvas');
   const rect = svg.getBoundingClientRect();
+  if (!Number.isFinite(scale) || scale <= 0 || rect.width <= 0 || rect.height <= 0) return;
   const vpX1 = (-tx) / scale, vpY1 = (-ty) / scale;
   const vpW = rect.width / scale, vpH = rect.height / scale;
   const vp = document.createElementNS('http://www.w3.org/2000/svg', 'rect');

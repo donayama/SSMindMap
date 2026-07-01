@@ -21,6 +21,7 @@
   --shadow-lg: 0 4px 16px rgba(0,0,0,0.15);
   --radius: 8px;
   --sidebar-width: 280px;
+  --tree-pane-width: 260px;
   --header-height: 52px;
 }
 [data-theme="dark"] {
@@ -64,6 +65,27 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 .logo-icon { font-size: 22px; }
 .toolbar-sep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
 .toolbar-group { display: flex; align-items: center; gap: 4px; }
+.toolbar-group.node-actions .btn { font-weight: 600; }
+.toolbar-more { position: relative; }
+.toolbar-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 178px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  display: none;
+  z-index: 50;
+}
+.toolbar-menu.open { display: block; }
+.toolbar-menu .btn {
+  width: 100%;
+  justify-content: flex-start;
+  border-color: transparent;
+}
 .btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius);
@@ -114,7 +136,25 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
 /* Main layout */
 #main { display: flex; flex: 1; overflow: hidden; }
 
-/* Sidebar */
+/* Tree pane / Sidebar */
+#tree-pane {
+  width: var(--tree-pane-width);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s;
+  flex-shrink: 0;
+}
+#tree-pane.collapsed { width: 0; border-right-width: 0; }
+#tree-pane .panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#tree-view { flex: 1; min-height: 0; overflow-y: auto; }
 #sidebar {
   width: var(--sidebar-width);
   background: var(--surface);
@@ -126,6 +166,25 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background
   flex-shrink: 0;
 }
 #sidebar.collapsed { width: 0; }
+.panel-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-tab {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.panel-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.sidebar-section { display: none; }
+.sidebar-section.active { display: block; }
 .panel {
   padding: 14px;
   border-bottom: 1px solid var(--border);
@@ -441,6 +500,10 @@ body.subtree-moving #move-hint { display: block; }
   display: none; align-items: center; justify-content: center;
 }
 #modal-overlay.open { display: flex; }
+.modal-open #canvas,
+.modal-open #node-toolbar,
+.modal-open #ctx-menu,
+.modal-open #emoji-picker { pointer-events: none; }
 .modal {
   background: var(--surface); border-radius: 12px; padding: 24px;
   box-shadow: var(--shadow-lg); max-width: 480px; width: 90%;
@@ -455,9 +518,11 @@ body.subtree-moving #move-hint { display: block; }
   padding: 3px 0 3px 0;
   font-size: 12px; cursor: pointer; color: var(--text);
   border-radius: 4px; white-space: nowrap; overflow: hidden;
+  border: 1px solid transparent;
+  min-height: 24px;
 }
 .tree-item:hover { background: var(--surface2); }
-.tree-item.selected { background: var(--accent); color: white; border-radius: 4px; }
+.tree-item.selected { background: var(--accent); color: white; border-color: var(--accent-hover); border-radius: 4px; font-weight: 700; }
 .tree-item.search-match { background: #d69e2e22; outline: 1px solid #D69E2E; border-radius: 4px; }
 .tree-item.search-match.selected { background: var(--accent); outline: none; }
 .tree-item .tree-toggle { flex-shrink:0; width:14px; text-align:center; font-size:10px; color:var(--text2); }
@@ -473,6 +538,12 @@ body.subtree-moving #move-hint { display: block; }
 /* Search highlight on canvas node */
 .node-search-match rect, .node-search-match ellipse, .node-search-match polygon {
   stroke: #D69E2E !important; stroke-width: 3 !important;
+}
+.node-group.selected rect,
+.node-group.selected ellipse,
+.node-group.selected polygon {
+  stroke: #2563eb !important;
+  stroke-width: 3 !important;
 }
 
 /* Emoji picker */
@@ -534,20 +605,18 @@ body.subtree-moving #move-hint { display: block; }
       <span>SSMindMap</span>
     </div>
     <div class="toolbar-sep"></div>
-    <div class="toolbar-group">
-      <button class="btn" onclick="newMap()" title="新規マップ (Ctrl+N)">📄 新規</button>
-      <button class="btn" onclick="openFile()" title="ファイルを開く (Ctrl+O)">📂 開く</button>
+    <div class="toolbar-group node-actions">
+      <button class="btn primary" onclick="addChild()" id="hdr-add-child" title="子ノード追加 (Tab)">➕ 子</button>
+      <button class="btn" onclick="addSibling()" id="hdr-add-sibling" title="兄弟ノード追加 (Enter)">↕ 兄弟</button>
+      <button class="btn icon" onclick="copyNode()" id="hdr-copy" title="コピー (Ctrl+D)">⧉</button>
+      <button class="btn icon" onclick="cutNode()" id="hdr-cut" title="カット (Ctrl+X)">✂</button>
+      <button class="btn icon" onclick="pasteNode()" id="hdr-paste" title="ここへ貼り付け (Ctrl+V)">📋</button>
+      <button class="btn icon danger" onclick="deleteSelected()" id="hdr-delete" title="削除 (Del)">🗑</button>
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">
-      <button class="btn" onclick="saveJSON()" title="JSONで保存 (Ctrl+S)">💾 JSON</button>
-      <button class="btn" onclick="saveYAML()" title="YAMLで保存">💾 YAML</button>
-      <button class="btn" onclick="saveMarkdown()" title="Markdownで保存">📝 MD</button>
-    </div>
-    <div class="toolbar-sep"></div>
-    <div class="toolbar-group">
-      <button class="btn" onclick="exportPNG()" title="PNG画像として保存">🖼 PNG</button>
-      <button class="btn" onclick="exportPDF()" title="PDFとして保存">📄 PDF</button>
+      <button class="btn icon" id="btn-undo" onclick="undo()" title="元に戻す (Ctrl+Z)" disabled>↩</button>
+      <button class="btn icon" id="btn-redo" onclick="redo()" title="やり直す (Ctrl+Y)" disabled>↪</button>
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">
@@ -573,26 +642,57 @@ body.subtree-moving #move-hint { display: block; }
       <button class="btn" id="btn-relation-mode" onclick="toggleRelationMode()" title="ノード間に関連線を引く">🔗 関連線</button>
     </div>
     <div class="toolbar-sep"></div>
-    <div class="toolbar-group">
-      <button class="btn icon" id="btn-undo" onclick="undo()" title="元に戻す (Ctrl+Z)" disabled>↩</button>
-      <button class="btn icon" id="btn-redo" onclick="redo()" title="やり直す (Ctrl+Y)" disabled>↪</button>
+    <div class="toolbar-group toolbar-more">
+      <button class="btn" onclick="toggleFileMenu(event)" title="ファイル操作">☰ ファイル</button>
+      <div id="file-menu" class="toolbar-menu">
+        <button class="btn" onclick="newMap(); closeFileMenu()" title="新規マップ (Ctrl+N)">📄 新規</button>
+        <button class="btn" onclick="openFile(); closeFileMenu()" title="ファイルを開く (Ctrl+O)">📂 開く</button>
+        <button class="btn" onclick="saveJSON(); closeFileMenu()" title="JSONで保存 (Ctrl+S)">💾 JSON保存</button>
+        <button class="btn" onclick="saveYAML(); closeFileMenu()" title="YAMLで保存">💾 YAML保存</button>
+        <button class="btn" onclick="saveMarkdown(); closeFileMenu()" title="Markdownで保存">📝 Markdown</button>
+        <button class="btn" onclick="exportPNG(); closeFileMenu()" title="PNG画像として保存">🖼 PNG出力</button>
+        <button class="btn" onclick="exportPDF(); closeFileMenu()" title="PDFとして保存">📄 PDF出力</button>
+      </div>
     </div>
     <div class="spacer"></div>
     <span id="autosave-indicator" style="font-size:11px;color:var(--text2);opacity:0;transition:opacity 0.4s;white-space:nowrap;pointer-events:none"></span>
+    <select id="map-switcher" onchange="switchStoredMap(this.value)" title="ブラウザ内のマップを切り替え"></select>
     <input type="text" id="map-title-input" placeholder="マップタイトル…" oninput="onTitleInput(this.value)" title="マップのタイトル（保存ファイル名に使用）">
     <div class="toolbar-group">
-      <button class="btn icon" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="サイドバー">☰</button>
+      <button class="btn icon" id="tree-toggle-btn" onclick="toggleTreePane()" title="ノードツリー">🌳</button>
+      <button class="btn icon" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="プロパティ/AI">☰</button>
       <button class="btn icon" id="theme-btn" onclick="toggleTheme()" title="テーマ切替">🌙</button>
     </div>
   </header>
 
   <!-- Main -->
   <div id="main">
+    <aside id="tree-pane">
+      <div class="panel" id="tree-panel">
+        <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span>ノードツリー</span>
+          <div style="display:flex;gap:4px;align-items:center">
+            <input type="text" id="search-input" placeholder="🔍 検索…" oninput="onSearchInput(this.value)" style="width:110px;font-size:12px;padding:3px 7px;min-height:0">
+            <button class="btn icon" id="search-prev" onclick="navigateSearch(-1)" title="前の結果" style="padding:2px 6px;font-size:11px" disabled>▲</button>
+            <button class="btn icon" id="search-next" onclick="navigateSearch(1)" title="次の結果" style="padding:2px 6px;font-size:11px" disabled>▼</button>
+          </div>
+        </div>
+        <div id="search-status" style="font-size:11px;color:var(--text2);margin-bottom:6px;display:none"></div>
+        <div id="tree-view"></div>
+      </div>
+    </aside>
+
     <!-- Sidebar -->
     <aside id="sidebar">
+      <div class="panel-tabs">
+        <button class="btn panel-tab active" data-panel-tab="node" onclick="showSidePanel('node')">プロパティ</button>
+        <button class="btn panel-tab" data-panel-tab="actions" onclick="showSidePanel('actions')">操作</button>
+        <button class="btn panel-tab" data-panel-tab="ai" onclick="showSidePanel('ai')">AI</button>
+        <button class="btn panel-tab" data-panel-tab="settings" onclick="showSidePanel('settings')">設定</button>
+      </div>
       <div class="sidebar-scroll">
         <!-- Node Properties -->
-        <div class="panel" id="node-panel">
+        <div class="panel sidebar-section active" id="node-panel" data-panel="node">
           <div class="panel-title">ノードプロパティ</div>
           <div id="node-panel-content">
             <div style="text-align:center;color:var(--text2);font-size:13px;padding:12px 0">
@@ -601,22 +701,8 @@ body.subtree-moving #move-hint { display: block; }
           </div>
         </div>
 
-        <!-- Tree View -->
-        <div class="panel" id="tree-panel">
-          <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <span>ツリービュー</span>
-            <div style="display:flex;gap:4px;align-items:center">
-              <input type="text" id="search-input" placeholder="🔍 検索…" oninput="onSearchInput(this.value)" style="width:110px;font-size:12px;padding:3px 7px;min-height:0">
-              <button class="btn icon" id="search-prev" onclick="navigateSearch(-1)" title="前の結果" style="padding:2px 6px;font-size:11px" disabled>▲</button>
-              <button class="btn icon" id="search-next" onclick="navigateSearch(1)" title="次の結果" style="padding:2px 6px;font-size:11px" disabled>▼</button>
-            </div>
-          </div>
-          <div id="search-status" style="font-size:11px;color:var(--text2);margin-bottom:6px;display:none"></div>
-          <div id="tree-view"></div>
-        </div>
-
         <!-- Node Actions -->
-        <div class="panel" id="actions-panel">
+        <div class="panel sidebar-section" id="actions-panel" data-panel="actions">
           <div class="panel-title">操作</div>
           <div class="action-btns">
             <button class="btn" onclick="addChild()" id="btn-add-child">➕ 子ノード追加 <kbd>Tab</kbd></button>
@@ -629,8 +715,22 @@ body.subtree-moving #move-hint { display: block; }
           </div>
         </div>
 
+        <!-- Settings Panel -->
+        <div class="panel sidebar-section" id="settings-panel" data-panel="settings">
+          <div class="panel-title">設定</div>
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;color:var(--text);cursor:pointer">
+              <input type="checkbox" id="setting-confirm-delete" onchange="setConfirmDelete(this.checked)">
+              <span>削除前に確認する</span>
+            </label>
+            <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-top:4px">
+              OFFにするとノード削除と関連線削除を確認なしで実行します。
+            </div>
+          </div>
+        </div>
+
         <!-- AI Panel -->
-        <div class="panel" id="ai-panel">
+        <div class="panel sidebar-section" id="ai-panel" data-panel="ai">
           <div class="panel-title">✨ AI アイデア提案</div>
           <div class="ai-step">
             <div class="ai-step-header">
@@ -851,6 +951,9 @@ let mindmap = JSON.parse(JSON.stringify(DEFAULT_MAP));
 let selectedId = null;
 let selectedRelationId = null;
 let ctxTargetId = null;
+let activeSidePanel = 'node';
+let treeCollapsedIds = new Set();
+let renderedMemoBBoxes = [];
 
 // Relation mode
 let relationMode = false;
@@ -869,7 +972,8 @@ let dropTargetId = null;
 let tx = 0, ty = 0, scale = 1;
 
 // Drag
-let dragState = null; // { nodeId, startX, startY, origX, origY, moved, isSubtreeMove }
+const DRAG_THRESHOLD_PX = 8;
+let dragState = null; // { nodeId, startX, startY, origX, origY, moved, isSubtreeMove, clientStartX, clientStartY }
 // Pan
 let panState = null;
 
@@ -880,6 +984,11 @@ const MAX_UNDO = 50;
 
 // Autosave
 const AUTOSAVE_KEY = 'ss-mindmap-autosave';
+const MAP_LIBRARY_KEY = 'ss-mindmap-library';
+const CURRENT_MAP_ID_KEY = 'ss-current-map-id';
+const SETTINGS_KEY = 'ss-mindmap-settings';
+let appSettings = { confirmDelete: true };
+let currentMapId = null;
 let _autosaveTimer = null;
 
 // ============================================================
@@ -958,10 +1067,35 @@ function updateUndoRedoBtns() {
   if (rBtn) rBtn.disabled = redoStack.length === 0;
 }
 
+function updateCommandButtons() {
+  const disabled = !selectedId;
+  const isRoot = selectedId === 'root';
+  const ids = [
+    ['btn-add-child', disabled],
+    ['btn-add-sibling', disabled || isRoot],
+    ['btn-cloud', disabled],
+    ['btn-delete', disabled || isRoot],
+    ['btn-copy', disabled || isRoot],
+    ['btn-cut', disabled || isRoot],
+    ['btn-paste', !cutBuffer || !selectedId],
+    ['hdr-add-child', disabled],
+    ['hdr-add-sibling', disabled || isRoot],
+    ['hdr-copy', disabled || isRoot],
+    ['hdr-cut', disabled || isRoot],
+    ['hdr-paste', !cutBuffer || !selectedId],
+    ['hdr-delete', disabled || isRoot],
+  ];
+  ids.forEach(([id, isDisabled]) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isDisabled;
+  });
+}
+
 function scheduleAutosave() {
   clearTimeout(_autosaveTimer);
   _autosaveTimer = setTimeout(() => {
     try {
+      persistCurrentMap();
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(mindmap));
       const el = document.getElementById('autosave-indicator');
       if (el) {
@@ -972,6 +1106,133 @@ function scheduleAutosave() {
       }
     } catch(e) { /* storage quota */ }
   }, 1500);
+}
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    appSettings = { ...appSettings, ...saved };
+  } catch(e) {
+    appSettings = { confirmDelete: true };
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings));
+}
+
+function syncSettingsUI() {
+  const confirmDelete = document.getElementById('setting-confirm-delete');
+  if (confirmDelete) confirmDelete.checked = appSettings.confirmDelete !== false;
+}
+
+function setConfirmDelete(value) {
+  appSettings.confirmDelete = !!value;
+  saveSettings();
+  showToast(appSettings.confirmDelete ? '削除確認を有効にしました' : '削除確認を無効にしました');
+}
+
+function getMapLabel(map) {
+  return (map.title || map.root?.text || '無題のマップ').trim() || '無題のマップ';
+}
+
+function loadMapLibrary() {
+  try {
+    const raw = localStorage.getItem(MAP_LIBRARY_KEY);
+    const parsed = raw ? JSON.parse(raw) : { maps: [] };
+    return parsed && Array.isArray(parsed.maps) ? parsed : { maps: [] };
+  } catch(e) {
+    return { maps: [] };
+  }
+}
+
+function saveMapLibrary(library) {
+  localStorage.setItem(MAP_LIBRARY_KEY, JSON.stringify(library));
+}
+
+function ensureCurrentMapId() {
+  if (!currentMapId) {
+    currentMapId = localStorage.getItem(CURRENT_MAP_ID_KEY) || uuid();
+    localStorage.setItem(CURRENT_MAP_ID_KEY, currentMapId);
+  }
+  return currentMapId;
+}
+
+function persistCurrentMap() {
+  const id = ensureCurrentMapId();
+  const library = loadMapLibrary();
+  const now = new Date().toISOString();
+  const entry = {
+    id,
+    title: getMapLabel(mindmap),
+    updatedAt: now,
+    data: mindmap
+  };
+  const idx = library.maps.findIndex(m => m.id === id);
+  if (idx >= 0) library.maps[idx] = entry;
+  else library.maps.unshift(entry);
+  saveMapLibrary(library);
+  localStorage.setItem(CURRENT_MAP_ID_KEY, id);
+  renderMapSwitcher();
+}
+
+function renderMapSwitcher() {
+  const select = document.getElementById('map-switcher');
+  if (!select) return;
+  const library = loadMapLibrary();
+  select.innerHTML = '';
+  if (library.maps.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = ensureCurrentMapId();
+    opt.textContent = getMapLabel(mindmap);
+    select.appendChild(opt);
+    return;
+  }
+  library.maps
+    .slice()
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+    .forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.title || '無題のマップ';
+      select.appendChild(opt);
+    });
+  select.value = ensureCurrentMapId();
+}
+
+function switchStoredMap(id) {
+  if (!id || id === currentMapId) return;
+  persistCurrentMap();
+  const library = loadMapLibrary();
+  const entry = library.maps.find(m => m.id === id);
+  if (!entry || !entry.data?.root) return;
+  currentMapId = id;
+  localStorage.setItem(CURRENT_MAP_ID_KEY, currentMapId);
+  mindmap = deepClone(entry.data);
+  undoStack = [];
+  redoStack = [];
+  selectedId = null;
+  selectedRelationId = null;
+  cutBuffer = null;
+  treeCollapsedIds = new Set();
+  syncTitleInput();
+  render();
+  updateSidebar();
+  updateUndoRedoBtns();
+  setTimeout(() => fitView(), 50);
+  showToast(`"${entry.title || '無題のマップ'}" に切り替えました`, 'success');
+}
+
+function switchMapByTitle(title) {
+  const normalized = (title || '').trim().toLowerCase();
+  if (!normalized) return;
+  const library = loadMapLibrary();
+  const entry = library.maps.find(m => (m.title || '').trim().toLowerCase() === normalized);
+  if (!entry) {
+    showToast(`リンク先マップ「${title}」が見つかりません`, 'error');
+    return;
+  }
+  switchStoredMap(entry.id);
 }
 
 // Returns true if nodeId is in the subtree rooted at ancestorId
@@ -1168,24 +1429,26 @@ function parseUrlParts(text) {
 // ============================================================
 function stripMarkdown(text) {
   return (text || '')
+    .replace(/\[\[(.+?)\]\]/g, '$1')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.+?)\*/g, '$1')
     .replace(/__(.+?)__/g, '$1')
     .replace(/~~(.+?)~~/g, '$1');
 }
 
-// Parse a single line into styled parts (bold, italic, underline, strike, url, text)
+// Parse a single line into styled parts (bold, italic, underline, strike, map link, url, text)
 function parseInlineParts(line) {
   const parts = [];
-  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|~~(.+?)~~|https?:\/\/[^\s]+)/g;
+  const re = /(\[\[(.+?)\]\]|\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|~~(.+?)~~|https?:\/\/[^\s]+)/g;
   let last = 0, m;
   while ((m = re.exec(line)) !== null) {
     if (m.index > last) parts.push({ type: 'text', content: line.slice(last, m.index) });
     const raw = m[0];
-    if (raw.startsWith('**'))      parts.push({ type: 'text', content: m[2], bold: true });
-    else if (raw.startsWith('*'))  parts.push({ type: 'text', content: m[3], italic: true });
-    else if (raw.startsWith('__')) parts.push({ type: 'text', content: m[4], underline: true });
-    else if (raw.startsWith('~~')) parts.push({ type: 'text', content: m[5], strike: true });
+    if (raw.startsWith('[['))      parts.push({ type: 'maplink', content: m[2] });
+    else if (raw.startsWith('**')) parts.push({ type: 'text', content: m[3], bold: true });
+    else if (raw.startsWith('*'))  parts.push({ type: 'text', content: m[4], italic: true });
+    else if (raw.startsWith('__')) parts.push({ type: 'text', content: m[5], underline: true });
+    else if (raw.startsWith('~~')) parts.push({ type: 'text', content: m[6], strike: true });
     else                           parts.push({ type: 'url',  content: raw });
     last = m.index + raw.length;
   }
@@ -1243,6 +1506,7 @@ function render() {
     updateEmptyHint();
     updateCanvasGroupTransform();
     updateNodeToolbar();
+    updateCommandButtons();
     if (typeof updateTreeView === 'function') updateTreeView();
     if (typeof updateMinimap === 'function') updateMinimap();
     return;
@@ -1261,6 +1525,7 @@ function render() {
   const nodesLayer = document.getElementById('nodes-layer');
   edgesLayer.innerHTML = '';
   nodesLayer.innerHTML = '';
+  renderedMemoBBoxes = [];
 
   // Cloud groups (behind nodes)
   renderCloudGroups(edgesLayer);
@@ -1274,6 +1539,7 @@ function render() {
   updateEmptyHint();
   updateCanvasGroupTransform();
   updateNodeToolbar();
+  updateCommandButtons();
   if (typeof updateTreeView === 'function') updateTreeView();
   if (typeof updateMinimap === 'function') updateMinimap();
 }
@@ -1304,7 +1570,7 @@ function renderNode(node, depth, color) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('data-id', node.id);
   const isSearchMatch = searchResults.length > 0 && searchResults.includes(node.id);
-  g.setAttribute('class', 'node-group' + (isSearchMatch ? ' node-search-match' : ''));
+  g.setAttribute('class', 'node-group' + (isSelected ? ' selected' : '') + (isSearchMatch ? ' node-search-match' : ''));
   g.setAttribute('transform', `translate(${node.x - dim.w / 2},${node.y - dim.h / 2})`);
 
   // Background shape
@@ -1320,6 +1586,20 @@ function renderNode(node, depth, color) {
     const hw = dim.w / 2, hh = dim.h / 2;
     bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     bgEl.setAttribute('points', `${hw},0 ${dim.w},${hh} ${hw},${dim.h} 0,${hh}`);
+  } else if (shape === 'hexagon') {
+    const cut = Math.min(24, dim.w * 0.18);
+    bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    bgEl.setAttribute('points', `${cut},0 ${dim.w - cut},0 ${dim.w},${dim.h / 2} ${dim.w - cut},${dim.h} ${cut},${dim.h} 0,${dim.h / 2}`);
+  } else if (shape === 'parallelogram') {
+    const slant = Math.min(22, dim.w * 0.16);
+    bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    bgEl.setAttribute('points', `${slant},0 ${dim.w},0 ${dim.w - slant},${dim.h} 0,${dim.h}`);
+  } else if (shape === 'pill') {
+    bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgEl.setAttribute('width', dim.w);
+    bgEl.setAttribute('height', dim.h);
+    bgEl.setAttribute('rx', dim.h / 2);
+    bgEl.setAttribute('ry', dim.h / 2);
   } else {
     bgEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     bgEl.setAttribute('width', dim.w);
@@ -1333,9 +1613,14 @@ function renderNode(node, depth, color) {
     bgEl.setAttribute('stroke', 'none');
   } else {
     const alpha = isDark ? '33' : '18';
+    const strokeWidth = node.borderWidth || 1.5;
+    const borderStyle = node.borderStyle || 'solid';
     bgEl.setAttribute('fill', color + alpha);
     bgEl.setAttribute('stroke', color);
-    bgEl.setAttribute('stroke-width', '1.5');
+    bgEl.setAttribute('stroke-width', borderStyle === 'double' ? Math.max(3, strokeWidth + 1.5) : strokeWidth);
+    if (borderStyle === 'dash') bgEl.setAttribute('stroke-dasharray', '8 4');
+    if (borderStyle === 'dot') bgEl.setAttribute('stroke-dasharray', '2 4');
+    if (borderStyle === 'dashdot') bgEl.setAttribute('stroke-dasharray', '10 4 2 4');
   }
 
   if (isDropTarget) {
@@ -1360,6 +1645,26 @@ function renderNode(node, depth, color) {
   }
 
   g.appendChild(bgEl);
+
+  if (!isRoot && node.borderStyle === 'double') {
+    const inner = bgEl.cloneNode(false);
+    inner.setAttribute('fill', 'none');
+    inner.setAttribute('stroke', color);
+    inner.setAttribute('stroke-width', '1.2');
+    inner.removeAttribute('filter');
+    if (shape === 'ellipse') {
+      inner.setAttribute('rx', Math.max(1, dim.w / 2 - 5));
+      inner.setAttribute('ry', Math.max(1, dim.h / 2 - 5));
+    } else if (inner.tagName.toLowerCase() === 'rect') {
+      inner.setAttribute('x', '5');
+      inner.setAttribute('y', '5');
+      inner.setAttribute('width', Math.max(1, dim.w - 10));
+      inner.setAttribute('height', Math.max(1, dim.h - 10));
+    } else {
+      inner.setAttribute('transform', `translate(${dim.w / 2},${dim.h / 2}) scale(0.9) translate(${-dim.w / 2},${-dim.h / 2})`);
+    }
+    g.appendChild(inner);
+  }
 
   // Multiline text with inline markdown + URL
   const fillColor = isRoot ? 'white' : (isDark ? '#f7fafc' : color);
@@ -1395,6 +1700,13 @@ function renderNode(node, depth, color) {
           tspan.style.pointerEvents = 'all';
           const url = part.content;
           tspan.addEventListener('click', e => { e.stopPropagation(); window.open(url, '_blank', 'noopener'); });
+        } else if (part.type === 'maplink') {
+          tspan.setAttribute('fill', isDark ? '#9ae6b4' : '#2f855a');
+          tspan.setAttribute('text-decoration', 'underline');
+          tspan.style.cursor = 'pointer';
+          tspan.style.pointerEvents = 'all';
+          const title = part.content;
+          tspan.addEventListener('click', e => { e.stopPropagation(); switchMapByTitle(title); });
         } else {
           const deco = [];
           if (part.underline) deco.push('underline');
@@ -1513,6 +1825,33 @@ function wrapMemoText(text, maxChars) {
   return out.slice(0, 5);
 }
 
+function collectVisibleNodes(node, arr = []) {
+  arr.push(node);
+  if (node.expanded && node.children) node.children.forEach(c => collectVisibleNodes(c, arr));
+  return arr;
+}
+
+function bboxesOverlap(a, b, pad = 8) {
+  return !(a.x + a.w + pad < b.x || b.x + b.w + pad < a.x || a.y + a.h + pad < b.y || b.y + b.h + pad < a.y);
+}
+
+function chooseMemoPosition(node, nodeDim, bw, bh, ptrH, offset) {
+  const candidates = [
+    { side: 'bottom', bx: node.x - bw / 2, by: node.y + nodeDim.h / 2 + offset + ptrH, tx: node.x, ty: node.y + nodeDim.h / 2 + offset },
+    { side: 'right', bx: node.x + nodeDim.w / 2 + offset + ptrH, by: node.y - bh / 2, tx: node.x + nodeDim.w / 2 + offset, ty: node.y },
+    { side: 'left', bx: node.x - nodeDim.w / 2 - offset - ptrH - bw, by: node.y - bh / 2, tx: node.x - nodeDim.w / 2 - offset, ty: node.y },
+    { side: 'top', bx: node.x - bw / 2, by: node.y - nodeDim.h / 2 - offset - ptrH - bh, tx: node.x, ty: node.y - nodeDim.h / 2 - offset },
+  ];
+  const nodeBoxes = collectVisibleNodes(mindmap.root)
+    .filter(n => n.id !== node.id)
+    .map(n => {
+      const dim = getNodeDim(n.text, n.id === 'root', n.fontSize);
+      return { x: n.x - dim.w / 2, y: n.y - dim.h / 2, w: dim.w, h: dim.h };
+    });
+  const blockers = nodeBoxes.concat(renderedMemoBBoxes);
+  return candidates.find(c => !blockers.some(b => bboxesOverlap({ x: c.bx, y: c.by, w: bw, h: bh }, b))) || candidates[0];
+}
+
 function renderMemoBubble(node) {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const nodeDim = getNodeDim(node.text, node.id === 'root', node.fontSize);
@@ -1526,18 +1865,26 @@ function renderMemoBubble(node) {
   const ptrH = 8;
   const OFFSET = 16;
 
-  // bubble center-x aligns to node, positioned below
-  const bx = node.x - bw / 2;
-  const by = node.y + nodeDim.h / 2 + OFFSET + ptrH;
+  const pos = chooseMemoPosition(node, nodeDim, bw, bh, ptrH, OFFSET);
+  const bx = pos.bx;
+  const by = pos.by;
 
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('class', 'memo-bubble');
   g.setAttribute('pointer-events', 'none');
 
-  // pointer triangle (up-pointing, at top of bubble)
-  const triX = node.x;
+  // pointer triangle
+  const triX = pos.tx;
   const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-  poly.setAttribute('points', `${triX - 7},${by} ${triX + 7},${by} ${triX},${by - ptrH}`);
+  if (pos.side === 'top') {
+    poly.setAttribute('points', `${triX - 7},${by + bh} ${triX + 7},${by + bh} ${triX},${by + bh + ptrH}`);
+  } else if (pos.side === 'right') {
+    poly.setAttribute('points', `${bx},${pos.ty - 7} ${bx},${pos.ty + 7} ${bx - ptrH},${pos.ty}`);
+  } else if (pos.side === 'left') {
+    poly.setAttribute('points', `${bx + bw},${pos.ty - 7} ${bx + bw},${pos.ty + 7} ${bx + bw + ptrH},${pos.ty}`);
+  } else {
+    poly.setAttribute('points', `${triX - 7},${by} ${triX + 7},${by} ${triX},${by - ptrH}`);
+  }
   poly.setAttribute('fill', isDark ? '#4a5568' : '#fffde7');
   poly.setAttribute('stroke', isDark ? '#718096' : '#c8b900');
   poly.setAttribute('stroke-width', '1');
@@ -1570,6 +1917,7 @@ function renderMemoBubble(node) {
   });
 
   document.getElementById('nodes-layer').appendChild(g);
+  renderedMemoBBoxes.push({ x: bx, y: by, w: bw, h: bh });
 }
 
 // ============================================================
@@ -1757,11 +2105,18 @@ function setRelProp(key, value) {
 function confirmDeleteRelation(id) {
   const rel = mindmap.relations.find(r => r.id === id);
   if (!rel) return;
-  showModal('関連線を削除', 'この関連線を削除しますか？', () => {
+  const deleteRelation = () => {
     pushUndo();
     mindmap.relations = mindmap.relations.filter(r => r.id !== id);
     selectedRelationId = null;
     render();
+  };
+  if (appSettings.confirmDelete === false) {
+    deleteRelation();
+    return;
+  }
+  showModal('関連線を削除', 'この関連線を削除しますか？', () => {
+    deleteRelation();
   });
 }
 
@@ -1923,6 +2278,7 @@ function fitView() {
 const canvas = document.getElementById('canvas');
 
 canvas.addEventListener('wheel', e => {
+  if (isModalOpen()) return;
   e.preventDefault();
   const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
   zoomAt(e.clientX, e.clientY, factor);
@@ -1937,6 +2293,7 @@ canvas.addEventListener('contextmenu', e => {
 });
 
 function onCanvasMouseDown(e) {
+  if (isModalOpen()) return;
   if (e.target.closest('.node-group') || e.target.closest('.expand-btn')) return;
   if (e.button !== 0 && e.button !== 1) return;
 
@@ -1950,6 +2307,7 @@ function onCanvasMouseDown(e) {
 }
 
 function onCanvasMouseMove(e) {
+  if (isModalOpen()) return;
   if (panState) {
     tx = panState.origTx + (e.clientX - panState.startX);
     ty = panState.origTy + (e.clientY - panState.startY);
@@ -1958,7 +2316,11 @@ function onCanvasMouseMove(e) {
   }
 
   if (dragState) {
-    dragState.moved = true;
+    if (!dragState.moved) {
+      const dist = Math.hypot(e.clientX - dragState.clientStartX, e.clientY - dragState.clientStartY);
+      if (dist < DRAG_THRESHOLD_PX) return;
+      dragState.moved = true;
+    }
 
     if (dragState.isSubtreeMove) {
       // Detect drop target under cursor (skip the dragged node itself)
@@ -1997,6 +2359,7 @@ function renderSubtreeOnly(movedNode) {
   const nodesLayer = document.getElementById('nodes-layer');
   edgesLayer.innerHTML = '';
   nodesLayer.innerHTML = '';
+  renderedMemoBBoxes = [];
   renderCloudGroups(edgesLayer);
   renderSubtree(mindmap.root, null, 0, '#667EEA');
   renderRelations(nodesLayer);
@@ -2004,6 +2367,7 @@ function renderSubtreeOnly(movedNode) {
 }
 
 function onCanvasMouseUp(e) {
+  if (isModalOpen()) return;
   if (panState) { panState = null; canvas.classList.remove('panning'); }
 
   if (dragState) {
@@ -2025,6 +2389,7 @@ function onCanvasMouseUp(e) {
 // Node events
 // ============================================================
 function onNodeMouseDown(e) {
+  if (isModalOpen()) return;
   if (e.target.closest('.expand-btn')) return;
   e.stopPropagation();
   if (e.button !== 0) return;
@@ -2033,13 +2398,15 @@ function onNodeMouseDown(e) {
   const node = findNode(nodeId);
   if (!node) return;
 
-  const isTreeMode = layoutMode !== 'radial' && layoutMode !== 'mandala';
-  const isSubtreeMove = isTreeMode || e.ctrlKey || e.metaKey;
+  const isFreeMove = layoutMode === 'radial' && !e.ctrlKey && !e.metaKey;
+  const isSubtreeMove = e.ctrlKey || e.metaKey;
+  if (!isFreeMove && !isSubtreeMove) return;
   const pt = svgPoint(e.clientX, e.clientY);
 
   dragState = {
     nodeId,
     startX: pt.x, startY: pt.y,
+    clientStartX: e.clientX, clientStartY: e.clientY,
     origX: node.x, origY: node.y,
     moved: false,
     isSubtreeMove
@@ -2272,13 +2639,7 @@ function updateSidebar() {
 
   const node = selectedId ? findNode(selectedId) : null;
   const actionsDisabled = !selectedId;
-  document.getElementById('btn-add-child').disabled = actionsDisabled;
-  document.getElementById('btn-add-sibling').disabled = actionsDisabled || selectedId === 'root';
-  document.getElementById('btn-cloud').disabled = actionsDisabled;
-  document.getElementById('btn-delete').disabled = actionsDisabled || selectedId === 'root';
-  document.getElementById('btn-copy').disabled = actionsDisabled || selectedId === 'root';
-  document.getElementById('btn-cut').disabled = actionsDisabled || selectedId === 'root';
-  document.getElementById('btn-paste').disabled = !cutBuffer || !selectedId;
+  updateCommandButtons();
 
   if (!actionsDisabled) {
     const n = findNode(selectedId);
@@ -2303,14 +2664,19 @@ function updateSidebar() {
   const nodeShape = node.shape || 'rect';
   const shapes = [
     { value: 'rect',    label: '▭ 角丸矩形' },
+    { value: 'pill',    label: '⬭ カプセル' },
     { value: 'ellipse', label: '⬭ 楕円' },
     { value: 'diamond', label: '◇ ひし形' },
+    { value: 'hexagon', label: '⬡ 六角形' },
+    { value: 'parallelogram', label: '▱ 平行四辺形' },
   ];
   const shapeOptions = shapes.map(s =>
     `<option value="${s.value}" ${nodeShape === s.value ? 'selected' : ''}>${s.label}</option>`
   ).join('');
 
   const nodeFontSize = node.fontSize || 'normal';
+  const nodeBorderStyle = node.borderStyle || 'solid';
+  const nodeBorderWidth = node.borderWidth || 1.5;
   const fontSizes = [
     { value: 'xs',     label: 'XS', px: '9px'  },
     { value: 'small',  label: 'S',  px: '11px' },
@@ -2335,7 +2701,21 @@ function updateSidebar() {
     </div>
     <div class="form-group">
       <label>形状</label>
-      <select onchange="setNodeShape(this.value)">${shapeOptions}</select>
+      <select id="node-shape-select" onchange="setNodeShape(this.value)">${shapeOptions}</select>
+    </div>
+    <div class="form-group">
+      <label>外周線</label>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <select id="node-border-style-select" onchange="setNodeBorderStyle(this.value)" style="flex:1">
+          <option value="solid" ${nodeBorderStyle === 'solid' ? 'selected' : ''}>実線</option>
+          <option value="dash" ${nodeBorderStyle === 'dash' ? 'selected' : ''}>破線</option>
+          <option value="dot" ${nodeBorderStyle === 'dot' ? 'selected' : ''}>点線</option>
+          <option value="dashdot" ${nodeBorderStyle === 'dashdot' ? 'selected' : ''}>一点鎖線</option>
+          <option value="double" ${nodeBorderStyle === 'double' ? 'selected' : ''}>二重線</option>
+        </select>
+        <input type="range" min="1" max="6" step="0.5" value="${nodeBorderWidth}" oninput="setNodeBorderWidth(parseFloat(this.value));this.nextElementSibling.textContent=this.value+'px'" style="flex:1">
+        <span style="font-size:12px;min-width:32px">${nodeBorderWidth}px</span>
+      </div>
     </div>
     <div class="form-group">
       <label>カラー</label>
@@ -2380,6 +2760,7 @@ function updateNodeMemo(value) {
   if (!node) return;
   node.memo = value.trim() || null;
   render();
+  scheduleAutosave();
 }
 
 // ============================================================
@@ -2610,6 +2991,7 @@ function renderMandala() {
 }
 
 function saveMarkdown() {
+  persistCurrentMap();
   const md = mapToMarkdown(mindmap.root, 0);
   const title = mindmap.title || mindmap.root.text || 'mindmap';
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
@@ -2629,6 +3011,8 @@ function deepCloneNode(node) {
     expanded: node.expanded,
     color: node.color,
     shape: node.shape || null,
+    borderStyle: node.borderStyle || null,
+    borderWidth: node.borderWidth || null,
     cloud: node.cloud || false,
     fontSize: node.fontSize || null,
     memo: node.memo || null,
@@ -2660,6 +3044,24 @@ function setNodeShape(shape) {
   pushUndo();
   node.shape = shape === 'rect' ? null : shape;
   render();
+  updateSidebar();
+}
+
+function setNodeBorderStyle(style) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  pushUndo();
+  node.borderStyle = style === 'solid' ? null : style;
+  render();
+  updateSidebar();
+}
+
+function setNodeBorderWidth(width) {
+  const node = findNode(selectedId);
+  if (!node) return;
+  node.borderWidth = width === 1.5 ? null : width;
+  render();
+  scheduleAutosave();
 }
 
 function mapToMarkdown(node, depth) {
@@ -2708,11 +3110,40 @@ function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed');
 }
 
+function toggleTreePane() {
+  document.getElementById('tree-pane').classList.toggle('collapsed');
+}
+
+function showSidePanel(panel) {
+  activeSidePanel = panel;
+  document.querySelectorAll('[data-panel]').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-panel') === panel);
+  });
+  document.querySelectorAll('[data-panel-tab]').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-panel-tab') === panel);
+  });
+}
+
+function toggleFileMenu(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('file-menu').classList.toggle('open');
+}
+
+function closeFileMenu() {
+  const menu = document.getElementById('file-menu');
+  if (menu) menu.classList.remove('open');
+}
+
 // ============================================================
 // Map title
 // ============================================================
 function onTitleInput(value) {
   mindmap.title = value || '';
+  const switcher = document.getElementById('map-switcher');
+  if (switcher && switcher.selectedOptions[0]) {
+    switcher.selectedOptions[0].textContent = getMapLabel(mindmap);
+  }
+  scheduleAutosave();
 }
 
 function syncTitleInput() {
@@ -2775,16 +3206,24 @@ function deleteSelected() {
   const node = findNode(selectedId);
   if (!node) return;
 
+  const deleteNode = () => {
+    const deletedId = selectedId;
+    pushUndo();
+    removeNode(deletedId);
+    if (cutBuffer && cutBuffer.id === deletedId) cutBuffer = null;
+    selectNode(null);
+    render();
+  };
+
+  if (appSettings.confirmDelete === false) {
+    deleteNode();
+    return;
+  }
+
   showModal(
     'ノードを削除',
     `"${node.text}" とその子ノードをすべて削除しますか？`,
-    () => {
-      pushUndo();
-      removeNode(selectedId);
-      if (cutBuffer && cutBuffer.id === selectedId) cutBuffer = null;
-      selectNode(null);
-      render();
-    }
+    deleteNode
   );
 }
 
@@ -2882,6 +3321,7 @@ function ctxToggleExpand() {
 
 document.addEventListener('click', e => {
   if (!e.target.closest('#ctx-menu')) closeCtxMenu();
+  if (!e.target.closest('.toolbar-more')) closeFileMenu();
 });
 
 // ============================================================
@@ -2929,8 +3369,14 @@ function selectAndScrollTo(id) {
 // Keyboard shortcuts
 // ============================================================
 document.addEventListener('keydown', e => {
-  // Block ALL shortcuts when a modal is open
-  if (document.getElementById('modal-overlay').classList.contains('open')) return;
+  // Block app shortcuts while a modal is open; native Tab/Enter stays available inside it.
+  if (isModalOpen()) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+    }
+    return;
+  }
 
   const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
 
@@ -3014,12 +3460,16 @@ function newMap() {
 
 function createNewMap(withSample) {
   mindmap = JSON.parse(JSON.stringify(withSample ? DEFAULT_MAP : EMPTY_MAP));
+  currentMapId = uuid();
+  localStorage.setItem(CURRENT_MAP_ID_KEY, currentMapId);
   undoStack = [];
   redoStack = [];
   selectedId = null;
   cutBuffer = null;
+  treeCollapsedIds = new Set();
   document.body.classList.remove('subtree-moving');
   localStorage.removeItem(AUTOSAVE_KEY);
+  persistCurrentMap();
   render();
   updateSidebar();
   updateUndoRedoBtns();
@@ -3029,6 +3479,7 @@ function createNewMap(withSample) {
 }
 
 function saveJSON() {
+  persistCurrentMap();
   const json = JSON.stringify(mindmap, null, 2);
   downloadFile(json, `${getFilename()}.json`, 'application/json');
   showToast('JSONで保存しました ✓', 'success');
@@ -3039,6 +3490,7 @@ function saveYAML() {
     showToast('YAML保存にはインターネット接続が必要です', 'error');
     return;
   }
+  persistCurrentMap();
   const yaml = jsyaml.dump(mindmap, { indent: 2, lineWidth: 120 });
   downloadFile(yaml, `${getFilename()}.yaml`, 'text/yaml');
   showToast('YAMLで保存しました ✓', 'success');
@@ -3089,12 +3541,16 @@ function onFileSelected(e) {
       undoStack = [];
       redoStack = [];
       mindmap = data;
+      currentMapId = uuid();
+      localStorage.setItem(CURRENT_MAP_ID_KEY, currentMapId);
       selectedId = null;
       cutBuffer = null;
+      treeCollapsedIds = new Set();
       render();
       updateSidebar();
       updateUndoRedoBtns();
       syncTitleInput();
+      persistCurrentMap();
       scheduleAutosave();
       setTimeout(() => fitView(), 50);
       showToast(`"${file.name}" を読み込みました ✓`, 'success');
@@ -3290,10 +3746,18 @@ function showModalMulti(title, body, buttons) {
     btnsEl.appendChild(b);
   }
   document.getElementById('modal-overlay').classList.add('open');
+  document.body.classList.add('modal-open');
+  const primary = btnsEl.querySelector('.primary, .danger') || btnsEl.querySelector('button');
+  if (primary) setTimeout(() => primary.focus(), 0);
 }
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
+  document.body.classList.remove('modal-open');
+}
+
+function isModalOpen() {
+  return document.getElementById('modal-overlay').classList.contains('open');
 }
 
 document.getElementById('modal-overlay').addEventListener('click', e => {
@@ -3328,6 +3792,9 @@ function updateEmptyHint() {
 // Init
 // ============================================================
 function init() {
+  loadSettings();
+  syncSettingsUI();
+
   const savedTheme = localStorage.getItem('ss-theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
   document.getElementById('theme-btn').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
@@ -3337,19 +3804,31 @@ function init() {
   layoutMode = savedLayout;
   document.getElementById('layout-select').value = savedLayout;
 
-  // Restore autosaved map
+  // Restore current browser-stored map, then fall back to legacy autosave.
   try {
-    const saved = localStorage.getItem(AUTOSAVE_KEY);
-    if (saved) {
+    currentMapId = localStorage.getItem(CURRENT_MAP_ID_KEY);
+    const library = loadMapLibrary();
+    const current = currentMapId ? library.maps.find(m => m.id === currentMapId) : null;
+    if (current && current.data?.root) {
+      mindmap = current.data;
+      showToast('前回のマップを復元しました ✓', 'success');
+    } else {
+      currentMapId = currentMapId || uuid();
+      localStorage.setItem(CURRENT_MAP_ID_KEY, currentMapId);
+      const saved = localStorage.getItem(AUTOSAVE_KEY);
+      if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && parsed.root) {
         mindmap = parsed;
         showToast('前回の作業を自動復元しました ✓', 'success');
       }
+      }
     }
   } catch(e) { /* ignore */ }
 
   syncTitleInput();
+  persistCurrentMap();
+  renderMapSwitcher();
   render();
   setTimeout(() => fitView(), 50);
   updateSidebar();
@@ -3578,6 +4057,7 @@ function renderTreeItem(node, parent, depth, q) {
   const isSelected = node.id === selectedId;
   const isMatch = q && (node.text || '').toLowerCase().includes(q);
   const hasChildren = node.children && node.children.length > 0;
+  const isTreeExpanded = !treeCollapsedIds.has(node.id);
 
   const row = document.createElement('div');
   row.className = 'tree-item' + (isSelected ? ' selected' : '') + (isMatch ? ' search-match' : '');
@@ -3587,13 +4067,12 @@ function renderTreeItem(node, parent, depth, q) {
   const toggle = document.createElement('span');
   toggle.className = 'tree-toggle';
   if (hasChildren) {
-    toggle.textContent = node.expanded ? '▾' : '▸';
+    toggle.textContent = isTreeExpanded ? '▾' : '▸';
     toggle.style.cursor = 'pointer';
     toggle.addEventListener('click', e => {
       e.stopPropagation();
-      pushUndo();
-      node.expanded = !node.expanded;
-      render();
+      if (treeCollapsedIds.has(node.id)) treeCollapsedIds.delete(node.id);
+      else treeCollapsedIds.add(node.id);
       updateTreeView();
     });
   }
@@ -3620,7 +4099,7 @@ function renderTreeItem(node, parent, depth, q) {
 
   parent.appendChild(row);
 
-  if (hasChildren && node.expanded) {
+  if (hasChildren && isTreeExpanded) {
     node.children.forEach(c => renderTreeItem(c, parent, depth + 1, q));
   }
 }
